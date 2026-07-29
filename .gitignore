@@ -1,0 +1,91 @@
+# Python
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+
+# Virtual Environment
+
+venv/
+.venv/
+env/
+ENV/
+
+data/repositories/
+
+# Django
+
+*.log
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Local settings
+local_settings.py
+
+
+# Environment Variables
+
+.env
+.env.*
+!.env.example
+
+
+# IDEs
+
+.vscode/
+.idea/
+
+# Allow shared VS Code settings if desired
+!.vscode/extensions.json
+!.vscode/settings.json
+
+
+# Operating System
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+
+# Logs
+
+*.log
+logs/
+*.pid
+
+
+# Temporary Files
+
+tmp/
+temp/
+.cache/
+
+
+
+
+# PostgreSQL
+
+*.dump
+*.sql
+
+
+# Render
+
+.render/
+
+
+# Git
+
+*.orig
