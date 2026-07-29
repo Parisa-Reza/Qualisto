@@ -1,0 +1,50 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qualisto</title>
+
+    <link rel="stylesheet" href="{% static 'evaluator/css/style.css' %}">
+</head>
+
+<body>
+
+    <div class="container">
+
+        <h1>Qualisto</h1>
+
+        <p class="subtitle">
+            Evaluate AI-generated webpages for prompt alignment, SEO quality,
+            technical health, search quality, and factual correctness.
+        </p>
+
+        <form>
+
+            <label>User Prompt</label>
+
+            <textarea
+                placeholder="Example: Create a travel guide website about Bali with information on beaches, local cuisine and attractions."></textarea>
+
+            <label>Website URL</label>
+
+            <input type="url" placeholder="https://example.com">
+
+            <button type="submit">
+                Evaluate Webpage
+            </button>
+
+        </form>
+
+        <div class="footer">
+            Presto AI Evaluation Engine
+        </div>
+
+    </div>
+
+</body>
+
+</html>
