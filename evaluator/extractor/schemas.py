@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from bs4 import BeautifulSoup
 
 
 @dataclass
@@ -28,8 +29,15 @@ class WebsiteContent:
     url: str
     title: str
     meta_description: str
+
     headings: Heading
+
     paragraphs: list[str]
+
     links: list[Link]
+
     images: list[Image]
+
     plain_text: str
+
+    soup: BeautifulSoup

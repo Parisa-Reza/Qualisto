@@ -45,6 +45,7 @@ class ContentExtractor:
             links=links,
             images=images,
             plain_text=plain_text,
+            soup=soup,
         )
 
     @staticmethod
