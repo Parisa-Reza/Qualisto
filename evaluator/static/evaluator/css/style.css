@@ -89,3 +89,38 @@ button:hover {
     color: #94a3b8;
     font-size: 13px;
 }
+
+.error{
+
+    margin-top:20px;
+    background:#fee2e2;
+    color:#b91c1c;
+    padding:15px;
+    border-radius:8px;
+
+}
+
+hr{
+
+    margin:40px 0;
+
+}
+
+h2{
+
+    margin-bottom:20px;
+
+}
+
+ul{
+
+    margin-bottom:25px;
+    padding-left:20px;
+
+}
+
+li{
+
+    margin-bottom:8px;
+
+}
