@@ -72,6 +72,7 @@ class TestSchemas(SimpleTestCase):
             links=links,
             images=images,
             plain_text="Paragraph 1",
+            soup=None,
         )
 
         self.assertEqual(content.url, "https://example.com")
