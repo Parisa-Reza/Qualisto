@@ -28,8 +28,15 @@ class ContentExtractorTest(SimpleTestCase):
                 <h1>Bali</h1>
 
                 <h2>Beaches</h2>
-
                 <h2>Food</h2>
+
+                <h3>Surfing</h3>
+
+                <h4>Best Beaches</h4>
+
+                <h5>Hidden Gems</h5>
+
+                <h6>Travel Tips</h6>
 
                 <p>Paragraph One.</p>
 
@@ -96,6 +103,58 @@ class ContentExtractorTest(SimpleTestCase):
         self.assertEqual(
             len(content.headings.h2),
             2,
+        )
+
+    
+    def test_extract_h3(self):
+
+        content = ContentExtractor.extract(
+            self.url,
+            self.soup,
+        )
+
+        self.assertEqual(
+            content.headings.h3,
+            ["Surfing"],
+        )
+
+
+    def test_extract_h4(self):
+
+        content = ContentExtractor.extract(
+            self.url,
+            self.soup,
+        )
+
+        self.assertEqual(
+            content.headings.h4,
+            ["Best Beaches"],
+        )
+
+
+    def test_extract_h5(self):
+
+        content = ContentExtractor.extract(
+            self.url,
+            self.soup,
+        )
+
+        self.assertEqual(
+            content.headings.h5,
+            ["Hidden Gems"],
+        )
+
+
+    def test_extract_h6(self):
+
+        content = ContentExtractor.extract(
+            self.url,
+            self.soup,
+        )
+
+        self.assertEqual(
+            content.headings.h6,
+            ["Travel Tips"],
         )
 
     def test_extract_paragraphs(self):
@@ -167,6 +226,13 @@ class ContentExtractorTest(SimpleTestCase):
             content.url,
             self.url,
         )
+
+        self.assertEqual(content.headings.h1, ["Bali"])
+        self.assertEqual(content.headings.h2, ["Beaches", "Food"])
+        self.assertEqual(content.headings.h3, ["Surfing"])
+        self.assertEqual(content.headings.h4, ["Best Beaches"])
+        self.assertEqual(content.headings.h5, ["Hidden Gems"])
+        self.assertEqual(content.headings.h6, ["Travel Tips"])
 
         self.assertEqual(
             content.title,

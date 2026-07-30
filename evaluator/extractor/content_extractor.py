@@ -22,6 +22,10 @@ class ContentExtractor:
         headings = Heading(
             h1=ContentExtractor._extract_h1(soup),
             h2=ContentExtractor._extract_h2(soup),
+            h3=ContentExtractor._extract_h3(soup),
+            h4=ContentExtractor._extract_h4(soup),
+            h5=ContentExtractor._extract_h5(soup),
+            h6=ContentExtractor._extract_h6(soup),
         )
 
         paragraphs = ContentExtractor._extract_paragraphs(soup)
@@ -76,6 +80,45 @@ class ContentExtractor:
         return [
             tag.get_text(strip=True)
             for tag in soup.find_all("h2")
+            if tag.get_text(strip=True)
+        ]
+    
+    @staticmethod
+    def _extract_h3(soup: BeautifulSoup) -> list[str]:
+
+        return [
+            tag.get_text(strip=True)
+            for tag in soup.find_all("h3")
+            if tag.get_text(strip=True)
+        ]
+
+
+    @staticmethod
+    def _extract_h4(soup: BeautifulSoup) -> list[str]:
+
+        return [
+            tag.get_text(strip=True)
+            for tag in soup.find_all("h4")
+            if tag.get_text(strip=True)
+        ]
+
+
+    @staticmethod
+    def _extract_h5(soup: BeautifulSoup) -> list[str]:
+
+        return [
+            tag.get_text(strip=True)
+            for tag in soup.find_all("h5")
+            if tag.get_text(strip=True)
+        ]
+
+
+    @staticmethod
+    def _extract_h6(soup: BeautifulSoup) -> list[str]:
+
+        return [
+            tag.get_text(strip=True)
+            for tag in soup.find_all("h6")
             if tag.get_text(strip=True)
         ]
 

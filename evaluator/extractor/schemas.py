@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 class Heading:
     h1: list[str] = field(default_factory=list)
     h2: list[str] = field(default_factory=list)
+    h3: list[str] = field(default_factory=list)
+    h4: list[str] = field(default_factory=list)
+    h5: list[str] = field(default_factory=list)
+    h6: list[str] = field(default_factory=list)
 
 
 @dataclass

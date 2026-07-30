@@ -22,147 +22,174 @@
             technical health, search quality, and factual correctness.
         </p>
 
-        <!-- <form>
-
-            <label>User Prompt</label>
-
-            <textarea
-                placeholder="Example: Create a travel guide website about Bali with information on beaches, local cuisine and attractions."></textarea>
-
-            <label>Website URL</label>
-
-            <input type="url" placeholder="https://example.com">
-
-            <button type="submit">
-                Evaluate Webpage
-            </button>
-
-        </form> -->
 
         <form method="POST">
 
-    {% csrf_token %}
+            {% csrf_token %}
 
-    <label>User Prompt</label>
+            <label>User Prompt</label>
 
-    <textarea
-        name="user_prompt"
-        rows="8"
-    >{{ user_prompt }}</textarea>
+            <textarea name="user_prompt" rows="8">{{ user_prompt }}</textarea>
 
 
-    <label>Website URL</label>
+            <label>Website URL</label>
 
-    <input
-        type="url"
-        name="website_url"
-        value="{{ website_url }}"
-        required>
+            <input type="url" name="website_url" value="{{ website_url }}" required>
 
-    <button type="submit">
+            <button type="submit">
 
-        Evaluate Website
+                Evaluate Website
 
-    </button>
+            </button>
 
-</form>
-{% if error %}
+        </form>
+        {% if error %}
 
-<div class="error">
+        <div class="error">
 
-    {{ error }}
+            {{ error }}
 
-</div>
+        </div>
 
-{% endif %}
+        {% endif %}
 
-{% if content %}
+        {% if content %}
 
-<hr>
+        <hr>
 
-<h2>Extraction Result</h2>
+        <h2>Extraction Result</h2>
 
-<p><strong>Title:</strong> {{ content.title }}</p>
+        <p><strong>Title:</strong> {{ content.title }}</p>
 
-<p><strong>Meta Description:</strong> {{ content.meta_description }}</p>
+        <p><strong>Meta Description:</strong> {{ content.meta_description }}</p>
 
-<p><strong>H1:</strong></p>
+        <p><strong>H1:</strong></p>
 
-<ul>
+        <ul>
 
-{% for item in content.headings.h1 %}
+            {% for item in content.headings.h1 %}
 
-<li>{{ item }}</li>
+            <li>{{ item }}</li>
 
-{% endfor %}
+            {% endfor %}
 
-</ul>
+        </ul>
 
-<p><strong>H2:</strong></p>
+        <p><strong>H2:</strong></p>
 
-<ul>
+        <ul>
 
-{% for item in content.headings.h2 %}
+            {% for item in content.headings.h2 %}
 
-<li>{{ item }}</li>
+            <li>{{ item }}</li>
 
-{% endfor %}
+            {% endfor %}
 
-</ul>
+        </ul>
 
-<p><strong>Paragraphs:</strong></p>
 
-<ul>
+        <p><strong>H3:</strong></p>
 
-{% for p in content.paragraphs %}
+        <ul>
 
-<li>{{ p }}</li>
+            {% for item in content.headings.h3 %}
 
-{% endfor %}
+            <li>{{ item }}</li>
 
-</ul>
+            {% endfor %}
 
-<p><strong>Links:</strong></p>
+        </ul>
 
-<ul>
+        <p><strong>H4:</strong></p>
 
-{% for link in content.links %}
+        <ul>
 
-<li>
+            {% for item in content.headings.h4 %}
 
-{{ link.text }}
+            <li>{{ item }}</li>
 
-—
+            {% endfor %}
 
-{{ link.href }}
+        </ul>
 
-</li>
+        <p><strong>H5:</strong></p>
 
-{% endfor %}
+        <ul>
 
-</ul>
+            {% for item in content.headings.h5 %}
 
-<p><strong>Images:</strong></p>
+            <li>{{ item }}</li>
 
-<ul>
+            {% endfor %}
 
-{% for image in content.images %}
+        </ul>
 
-<li>
+        <p><strong>H6:</strong></p>
 
-{{ image.src }}
+        <ul>
 
-—
+            {% for item in content.headings.h6 %}
 
-{{ image.alt }}
+            <li>{{ item }}</li>
 
-</li>
+            {% endfor %}
 
-{% endfor %}
+        </ul>
 
-</ul>
 
-{% endif %}
+        <p><strong>Paragraphs:</strong></p>
+
+        <ul>
+
+            {% for p in content.paragraphs %}
+
+            <li>{{ p }}</li>
+
+            {% endfor %}
+
+        </ul>
+
+        <p><strong>Links:</strong></p>
+
+        <ul>
+
+            {% for link in content.links %}
+
+            <li>
+
+                {{ link.text }}
+
+                —
+
+                {{ link.href }}
+
+            </li>
+
+            {% endfor %}
+
+        </ul>
+
+        <p><strong>Images:</strong></p>
+
+        <ul>
+
+            {% for image in content.images %}
+
+            <li>
+
+                {{ image.src }}
+
+                —
+
+                {{ image.alt }}
+
+            </li>
+
+            {% endfor %}
+
+        </ul>
+
+        {% endif %}
 
         <div class="footer">
             Presto AI Evaluation Engine
