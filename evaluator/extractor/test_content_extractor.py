@@ -253,3 +253,5 @@ class ContentExtractorTest(SimpleTestCase):
             len(content.images),
             1,
         )
+
+        self.assertIsNotNone(content.soup)
