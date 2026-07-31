@@ -39,3 +39,9 @@ class EvaluationResult:
 class PromptAlignmentResult(EvaluationResult):
     missing_requirements: list[str] = field(default_factory=list)
     off_topic_sections: list[str] = field(default_factory=list)
+
+@dataclass(slots=True)
+class KnowledgeValidationResult(EvaluationResult):
+    verified_claims: list[str] = field(default_factory=list)
+    unsupported_claims: list[str] = field(default_factory=list)
+    uncertain_claims: list[str] = field(default_factory=list)

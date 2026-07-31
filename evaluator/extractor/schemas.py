@@ -23,6 +23,14 @@ class Image:
     src: str
     alt: str
 
+@dataclass(slots=True)
+class PropertyCard:
+    title: str
+    city: str
+    country: str
+    country_code: str
+    location: str
+    property_type: str
 
 @dataclass
 class WebsiteContent:
@@ -41,3 +49,5 @@ class WebsiteContent:
     plain_text: str
 
     soup: BeautifulSoup
+    
+    property_cards: list[PropertyCard] = field(default_factory=list)

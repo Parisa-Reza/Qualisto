@@ -4,7 +4,9 @@ from .schemas import (
     Heading,
     Image,
     Link,
-    WebsiteContent,
+    PropertyCard,
+    WebsiteContent
+    
 )
 
 
@@ -36,6 +38,8 @@ class ContentExtractor:
 
         plain_text = ContentExtractor._extract_plain_text(soup)
 
+        property_cards = ContentExtractor._extract_property_cards(soup)
+
         return WebsiteContent(
             url=url,
             title=title,
@@ -44,6 +48,7 @@ class ContentExtractor:
             paragraphs=paragraphs,
             links=links,
             images=images,
+            property_cards=property_cards,
             plain_text=plain_text,
             soup=soup,
         )
@@ -168,3 +173,26 @@ class ContentExtractor:
     def _extract_plain_text(soup: BeautifulSoup) -> str:
 
         return soup.get_text(" ", strip=True)
+
+    
+    @staticmethod
+    def _extract_property_cards(soup: BeautifulSoup) -> list[PropertyCard]:
+        cards = []
+
+        for card in soup.select(".pres__property-tiles.sp-property-card"):
+            title = card.select_one(".property-title a")
+            property_type = card.select_one(".property-type")
+
+            cards.append(
+                PropertyCard(
+                    title=title.get_text(" ", strip=True) if title else "",
+                    city=card.get("data-property_city", ""),
+                    country=card.get("data-property_country", ""),
+                    country_code=card.get("data-property_country_code", ""),
+                    location=card.get("data-search_string", ""),
+                    property_type=property_type.get_text(" ", strip=True)
+                    if property_type else "",
+                )
+            )
+
+        return cards

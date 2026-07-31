@@ -255,3 +255,38 @@ class ContentExtractorTest(SimpleTestCase):
         )
 
         self.assertIsNotNone(content.soup)
+
+
+        def test_extract_property_card(self):
+            html = """
+            <div class="pres__property-tiles sp-property-card"
+                data-property_country="USA"
+                data-property_country_code="US"
+                data-property_city="Jersey City"
+                data-search_string="The Heights, Jersey City, New Jersey, USA">
+
+                <div class="property-title">
+                    <a>Modern 4BR 2.5BA Duplex For NYC</a>
+                </div>
+
+                <span class="property-type">Condo</span>
+            </div>
+            """
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            content = ContentExtractor.extract(
+                "https://example.com",
+                soup,
+            )
+
+            self.assertEqual(len(content.property_cards), 1)
+
+            card = content.property_cards[0]
+
+            self.assertEqual(card.title, "Modern 4BR 2.5BA Duplex For NYC")
+            self.assertEqual(card.city, "Jersey City")
+            self.assertEqual(card.country, "USA")
+            self.assertEqual(card.country_code, "US")
+            self.assertEqual(card.location, "The Heights, Jersey City, New Jersey, USA")
+            self.assertEqual(card.property_type, "Condo")
