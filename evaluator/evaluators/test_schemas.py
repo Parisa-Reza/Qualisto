@@ -3,6 +3,7 @@ from django.test import SimpleTestCase
 from evaluator.evaluators.schemas import (
     EvaluationResult,
     Issue,
+    PromptAlignmentResult,
     Recommendation,
 )
 
@@ -172,4 +173,36 @@ class EvaluatorSchemasTest(SimpleTestCase):
         self.assertEqual(
             result.recommendations[1].title,
             "Add ALT Text",
+        )
+
+
+    def test_prompt_alignment_result(self):
+
+        result = PromptAlignmentResult(
+            score=85,
+            issues=[
+                Issue(
+                    severity="Medium",
+                    title="Missing Requirement",
+                    description="The page does not discuss Bali cuisine.",
+                )
+            ],
+            recommendations=[
+                Recommendation(
+                    title="Add Bali Cuisine",
+                    description="Add information about local Balinese cuisine.",
+                )
+            ],
+            missing_requirements=["Bali cuisine"],
+            off_topic_sections=["US visa information"],
+        )
+
+        self.assertEqual(result.score, 85)
+        self.assertEqual(
+            result.missing_requirements,
+            ["Bali cuisine"],
+        )
+        self.assertEqual(
+            result.off_topic_sections,
+            ["US visa information"],
         )
