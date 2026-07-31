@@ -33,3 +33,9 @@ class EvaluationResult:
     issues: list[Issue] = field(default_factory=list)
 
     recommendations: list[Recommendation] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class PromptAlignmentResult(EvaluationResult):
+    missing_requirements: list[str] = field(default_factory=list)
+    off_topic_sections: list[str] = field(default_factory=list)
