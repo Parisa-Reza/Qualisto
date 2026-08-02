@@ -1,6 +1,30 @@
 from evaluator.evaluators.evaluation_report import EvaluationReport
 from evaluator.evaluators.score_aggregator import ScoreAggregator
+
+from evaluator.extractor.fetcher import HTMLFetcher
+from evaluator.extractor.parser import HTMLParser
+from evaluator.extractor.content_extractor import ContentExtractor
+
 from evaluator.graph.state import EvaluationState
+
+
+def content_extraction_node(state: EvaluationState) -> EvaluationState:
+    """
+    Fetch webpage HTML and extract structured website content.
+    """
+
+    html = HTMLFetcher.fetch(state["url"])
+
+    soup = HTMLParser.parse(html)
+
+    website_content = ContentExtractor.extract(
+        state["url"],
+        soup,
+    )
+
+    state["website_content"] = website_content
+
+    return state
 
 
 def prompt_alignment_node(state: EvaluationState) -> EvaluationState:
@@ -11,8 +35,8 @@ def prompt_alignment_node(state: EvaluationState) -> EvaluationState:
     evaluator = state["prompt_alignment_evaluator"]
 
     state["prompt_alignment"] = evaluator.evaluate(
-        state["website_content"],
         state["user_prompt"],
+        state["website_content"],
     )
 
     return state

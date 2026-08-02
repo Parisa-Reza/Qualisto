@@ -1,6 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 
 from evaluator.graph.nodes import (
+    content_extraction_node,
     knowledge_validation_node,
     prompt_alignment_node,
     score_aggregation_node,
@@ -17,6 +18,7 @@ def build_evaluation_graph():
     """
     graph = StateGraph(EvaluationState)
 
+    graph.add_node("content_extraction", content_extraction_node,)
     graph.add_node("prompt_alignment", prompt_alignment_node)
     graph.add_node("knowledge_validation", knowledge_validation_node)
     graph.add_node("seo_quality", seo_quality_node)
@@ -24,7 +26,9 @@ def build_evaluation_graph():
     graph.add_node("technical_html", technical_html_node)
     graph.add_node("score_aggregation", score_aggregation_node)
 
-    graph.add_edge(START, "prompt_alignment")
+    graph.add_edge(START,"content_extraction",)
+
+    graph.add_edge( "content_extraction", "prompt_alignment" )
     graph.add_edge("prompt_alignment", "knowledge_validation")
     graph.add_edge("knowledge_validation", "seo_quality")
     graph.add_edge("seo_quality", "search_quality")

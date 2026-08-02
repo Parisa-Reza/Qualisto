@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Qualisto - Website Evaluation</title>
+
+    {% load static %}
+
+    <link rel="stylesheet" href="{% static 'evaluator/css/style.css' %}" >
+</head>
+
+<body>
+
+<div class="container">
+
+    <header class="header">
+        <h1>Qualisto</h1>
+        <p>AI-powered webpage quality evaluation</p>
+    </header>
+
+    <!-- Evaluation Form -->
+    <section class="card">
+
+        <h2>Evaluate Website</h2>
+
+        <form id="evaluation-form">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="website-url">
+                    Website URL
+                </label>
+
+                <input
+                    type="url"
+                    id="website-url"
+                    name="url"
+                    placeholder="https://example.com"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="user-prompt">
+                    User Prompt
+                </label>
+
+                <textarea
+                    id="user-prompt"
+                    name="user_prompt"
+                    rows="5"
+                    placeholder="Create a travel webpage about Bali beaches and hotels."
+                    required
+                ></textarea>
+            </div>
+
+            <button
+                type="submit"
+                id="evaluate-button"
+            >
+                Evaluate Website
+            </button>
+
+        </form>
+
+        <div
+            id="loading"
+            class="loading hidden"
+        >
+            Evaluating website...
+        </div>
+
+        <div
+            id="error"
+            class="error hidden"
+        ></div>
+
+    </section>
+
+
+    <!-- Evaluation Report -->
+    <section
+        id="report"
+        class="hidden"
+    >
+
+        <div class="card score-card">
+
+            <h2>Overall Score</h2>
+
+            <div
+                id="overall-score"
+                class="overall-score"
+            >
+                -
+            </div>
+
+            <p id="score-status"></p>
+
+        </div>
+
+
+        <!-- Individual Scores -->
+        <div class="card">
+
+            <h2>Evaluation Scores</h2>
+
+            <div
+                id="score-grid"
+                class="score-grid"
+            ></div>
+
+        </div>
+
+
+        <!-- Issues -->
+        <div class="card">
+
+            <h2>Issues</h2>
+
+            <div
+                id="issues"
+            >
+                No issues found.
+            </div>
+
+        </div>
+
+
+        <!-- Recommendations -->
+        <div class="card">
+
+            <h2>Recommendations</h2>
+
+            <div
+                id="recommendations"
+            >
+                No recommendations.
+            </div>
+
+        </div>
+
+    </section>
+
+</div>
+
+
+<script src="{% static 'evaluator/js/evaluation.js' %}"></script>
+
+</body>
+</html>

@@ -19,7 +19,9 @@ class EvaluationServiceTest(SimpleTestCase):
 
         graph.invoke.return_value = expected_result
 
-        service = EvaluationService(graph=graph)
+        service = EvaluationService(
+            graph=graph
+        )
 
         result = service.evaluate(
             url="https://example.com",
@@ -33,14 +35,20 @@ class EvaluationServiceTest(SimpleTestCase):
             }
         )
 
-        self.assertEqual(result, expected_result)
+        self.assertEqual(
+            result,
+            expected_result,
+        )
 
     def test_url_is_required(self):
         graph = Mock()
 
-        service = EvaluationService(graph=graph)
+        service = EvaluationService(
+            graph=graph
+        )
 
         with self.assertRaises(ValueError):
+
             service.evaluate(
                 url="",
                 user_prompt="Create a travel page about Bali.",
@@ -51,9 +59,12 @@ class EvaluationServiceTest(SimpleTestCase):
     def test_user_prompt_is_required(self):
         graph = Mock()
 
-        service = EvaluationService(graph=graph)
+        service = EvaluationService(
+            graph=graph
+        )
 
         with self.assertRaises(ValueError):
+
             service.evaluate(
                 url="https://example.com",
                 user_prompt="",
@@ -65,7 +76,9 @@ class EvaluationServiceTest(SimpleTestCase):
         graph = Mock()
         graph.invoke.return_value = {}
 
-        service = EvaluationService(graph=graph)
+        service = EvaluationService(
+            graph=graph
+        )
 
         service.evaluate(
             url="  https://example.com  ",
@@ -83,9 +96,12 @@ class EvaluationServiceTest(SimpleTestCase):
         graph = Mock()
         graph.invoke.return_value = "invalid result"
 
-        service = EvaluationService(graph=graph)
+        service = EvaluationService(
+            graph=graph
+        )
 
         with self.assertRaises(TypeError):
+
             service.evaluate(
                 url="https://example.com",
                 user_prompt="Create a Bali page.",
@@ -94,9 +110,12 @@ class EvaluationServiceTest(SimpleTestCase):
     def test_non_string_url_is_rejected(self):
         graph = Mock()
 
-        service = EvaluationService(graph=graph)
+        service = EvaluationService(
+            graph=graph
+        )
 
         with self.assertRaises(ValueError):
+
             service.evaluate(
                 url=None,
                 user_prompt="Create a Bali page.",
@@ -107,9 +126,12 @@ class EvaluationServiceTest(SimpleTestCase):
     def test_non_string_prompt_is_rejected(self):
         graph = Mock()
 
-        service = EvaluationService(graph=graph)
+        service = EvaluationService(
+            graph=graph
+        )
 
         with self.assertRaises(ValueError):
+
             service.evaluate(
                 url="https://example.com",
                 user_prompt=None,
