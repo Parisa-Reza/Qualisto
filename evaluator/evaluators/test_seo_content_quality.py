@@ -1,7 +1,7 @@
 from django.test import SimpleTestCase
 from bs4 import BeautifulSoup
 
-from evaluator.evaluators.seo_quality import SEOQualityEvaluator
+from evaluator.evaluators.seo_content_quality import SEOQualityEvaluator
 from evaluator.extractor.schemas import Heading, Image, Link, WebsiteContent
 
 
@@ -42,7 +42,6 @@ class SEOQualityEvaluatorTest(SimpleTestCase):
                 "Bali is one of the world's most popular tourist destinations, "
                 "offering beautiful beaches, temples, local culture, and outdoor activities."
             )
-
             paragraphs = [sentence] * 50
             plain_text = " ".join(paragraphs)
         else:
@@ -57,26 +56,22 @@ class SEOQualityEvaluatorTest(SimpleTestCase):
             images=[Image(src="/bali.jpg", alt="Bali Beach")],
             paragraphs=paragraphs,
             plain_text=plain_text,
-            
             soup=soup,
         )
 
     def test_valid_title(self):
         result = SEOQualityEvaluator.evaluate(self.create_content())
-
         self.assertEqual(result.score, 100)
         self.assertEqual(len(result.issues), 0)
         self.assertEqual(len(result.recommendations), 0)
 
     def test_missing_title(self):
         result = SEOQualityEvaluator.evaluate(self.create_content(title=""))
-
         self.assertEqual(result.issues[0].title, "Missing SEO Title")
         self.assertEqual(result.recommendations[0].title, "Add SEO Title")
 
     def test_title_too_short(self):
         result = SEOQualityEvaluator.evaluate(self.create_content(title="Bali Guide"))
-
         self.assertEqual(result.issues[0].title, "Title Too Short")
 
     def test_title_too_long(self):
@@ -89,22 +84,18 @@ class SEOQualityEvaluatorTest(SimpleTestCase):
                 ),
             ),
         )
-
         self.assertEqual(result.issues[0].title, "Title Too Long")
 
     def test_valid_meta_description(self):
         result = SEOQualityEvaluator.evaluate(self.create_content())
-
         self.assertFalse(any(issue.title == "Missing Meta Description" for issue in result.issues))
 
     def test_missing_meta_description(self):
         result = SEOQualityEvaluator.evaluate(self.create_content(meta_description=""))
-
         self.assertEqual(result.issues[0].title, "Missing Meta Description")
 
     def test_meta_description_too_short(self):
         result = SEOQualityEvaluator.evaluate(self.create_content(meta_description="Visit Bali."))
-
         self.assertTrue(any(issue.title == "Meta Description Too Short" for issue in result.issues))
 
     def test_meta_description_too_long(self):
@@ -114,51 +105,25 @@ class SEOQualityEvaluatorTest(SimpleTestCase):
             "food experiences, adventure sports, wellness retreats and many unforgettable experiences "
             "for every type of traveller throughout the year."
         )
-
         result = SEOQualityEvaluator.evaluate(self.create_content(meta_description=description))
-
         self.assertTrue(any(issue.title == "Meta Description Too Long" for issue in result.issues))
 
-    
-
     def test_thin_content(self):
-
         result = SEOQualityEvaluator.evaluate(
-            self.create_content(
-                plain_text=" ".join(["bali"] * 120),
-            ),
+            self.create_content(plain_text=" ".join(["bali"] * 120)),
         )
-
-        self.assertTrue(
-            any(
-                issue.title == "Thin Content"
-                for issue in result.issues
-            )
-        )
+        self.assertTrue(any(issue.title == "Thin Content" for issue in result.issues))
 
     def test_low_content_coverage(self):
-
         result = SEOQualityEvaluator.evaluate(
-            self.create_content(
-                plain_text=" ".join(["bali"] * 500),
-            ),
+            self.create_content(plain_text=" ".join(["bali"] * 500)),
         )
-
-        self.assertTrue(
-            any(
-                issue.title == "Low Content Coverage"
-                for issue in result.issues
-            )
-        )
+        self.assertTrue(any(issue.title == "Low Content Coverage" for issue in result.issues))
 
     def test_good_content_length(self):
-
         result = SEOQualityEvaluator.evaluate(
-            self.create_content(
-                plain_text=" ".join(["bali"] * 1000),
-            ),
+            self.create_content(plain_text=" ".join(["bali"] * 1000)),
         )
-
         self.assertFalse(
             any(
                 issue.title in (
@@ -171,162 +136,167 @@ class SEOQualityEvaluatorTest(SimpleTestCase):
             )
         )
 
-
     def test_very_long_content(self):
-
         result = SEOQualityEvaluator.evaluate(
-            self.create_content(
-                plain_text=" ".join(["bali"] * 3000),
-            ),
+            self.create_content(plain_text=" ".join(["bali"] * 3000)),
         )
-
-        self.assertTrue(
-            any(
-                issue.title == "Very Long Content"
-                for issue in result.issues
-            )
-        )
-
+        self.assertTrue(any(issue.title == "Very Long Content" for issue in result.issues))
 
     def test_excessively_long_content(self):
-
         result = SEOQualityEvaluator.evaluate(
-            self.create_content(
-                plain_text=" ".join(["bali"] * 4500),
-            ),
+            self.create_content(plain_text=" ".join(["bali"] * 4500)),
         )
-
-        self.assertTrue(
-            any(
-                issue.title == "Excessively Long Content"
-                for issue in result.issues
-            )
-        )
+        self.assertTrue(any(issue.title == "Excessively Long Content" for issue in result.issues))
 
     def test_long_paragraphs(self):
-
         paragraph = " ".join(["bali"] * 200)
-
-        result = SEOQualityEvaluator.evaluate(
-            self.create_content(
-                plain_text=paragraph,
-            ),
-        )
-
-        self.assertTrue(
-            any(
-                issue.title == "Long Paragraphs"
-                for issue in result.issues
-            )
-        )
+        result = SEOQualityEvaluator.evaluate(self.create_content(plain_text=paragraph))
+        self.assertTrue(any(issue.title == "Long Paragraphs" for issue in result.issues))
 
     def test_low_internal_linking(self):
-
-        content = self.create_content(
-            plain_text=" ".join(["bali"] * 1200),
-        )
-
+        content = self.create_content(plain_text=" ".join(["bali"] * 1200))
         content.links = []
-
         result = SEOQualityEvaluator.evaluate(content)
-
-        self.assertTrue(
-            any(
-                issue.title == "Low Internal Linking"
-                for issue in result.issues
-            )
-        )
-
+        self.assertTrue(any(issue.title == "Low Internal Linking" for issue in result.issues))
 
     def test_too_many_external_links(self):
-
         content = self.create_content()
-
         content.links = [
-            Link(
-                text=f"Link {i}",
-                href=f"https://example{i}.com",
-            )
+            Link(text=f"Link {i}", href=f"https://example{i}.com")
             for i in range(30)
         ]
-
         result = SEOQualityEvaluator.evaluate(content)
-
-        self.assertTrue(
-            any(
-                issue.title == "Too Many External Links"
-                for issue in result.issues
-            )
-        )
-
+        self.assertTrue(any(issue.title == "Too Many External Links" for issue in result.issues))
 
     def test_low_image_coverage(self):
-
-        content = self.create_content(
-            plain_text=" ".join(["bali"] * 1800),
-        )
-
+        content = self.create_content(plain_text=" ".join(["bali"] * 1800))
         content.images = []
-
         result = SEOQualityEvaluator.evaluate(content)
-
-        self.assertTrue(
-            any(
-                issue.title == "Low Image Coverage"
-                for issue in result.issues
-            )
-        )
-
+        self.assertTrue(any(issue.title == "Low Image Coverage" for issue in result.issues))
 
     def test_duplicate_headings(self):
-
         content = self.create_content()
-
-        content.headings = Heading(
-            h1=["Bali"],
-            h2=["Hotels", "Hotels"],
-        )
-
+        content.headings = Heading(h1=["Bali"], h2=["Hotels", "Hotels"])
         result = SEOQualityEvaluator.evaluate(content)
-
-        self.assertTrue(
-            any(
-                issue.title == "Duplicate Headings"
-                for issue in result.issues
-            )
-        )
+        self.assertTrue(any(issue.title == "Duplicate Headings" for issue in result.issues))
 
     def test_generic_headings(self):
-
         content = self.create_content()
-
-        content.headings = Heading(
-            h1=["Home"],
-            h2=["Section"],
-        )
-
+        content.headings = Heading(h1=["Home"], h2=["Section"])
         result = SEOQualityEvaluator.evaluate(content)
-
-        self.assertTrue(
-            any(
-                issue.title == "Generic Headings"
-                for issue in result.issues
-            )
-        )
+        self.assertTrue(any(issue.title == "Generic Headings" for issue in result.issues))
 
     def test_low_readability(self):
-
         sentence = " ".join(["bali"] * 200) + "."
+        result = SEOQualityEvaluator.evaluate(self.create_content(plain_text=sentence))
+        self.assertTrue(any(issue.title == "Low Readability" for issue in result.issues))
 
-        result = SEOQualityEvaluator.evaluate(
-            self.create_content(
-                plain_text=sentence,
+    def test_extract_keywords_from_user_prompt(self):
+        keywords = SEOQualityEvaluator._extract_keywords(
+            "Create a travel webpage about Bali beaches and Bali hotels."
+        )
+        self.assertIn("bali", keywords)
+        self.assertIn("bali beaches", keywords)
+        self.assertIn("bali hotels", keywords)
+
+    def test_missing_target_keyword(self):
+        content = self.create_content(
+            plain_text=(
+                "Bali is beautiful. "
+                "Bali has beaches and temples. "
+                + " ".join(["destination"] * 300)
             ),
         )
+        result = SEOQualityEvaluator.evaluate(
+            content,
+            user_prompt="Create a travel webpage about London.",
+        )
+        self.assertTrue(any(issue.title == "Missing Target Keyword" for issue in result.issues))
 
-        self.assertTrue(
+    def test_keyword_present_in_body(self):
+        content = self.create_content(
+            plain_text=(
+                "Bali is a popular travel destination "
+                "with beaches and temples."
+            ),
+        )
+        result = SEOQualityEvaluator.evaluate(
+            content,
+            user_prompt="Create a travel webpage about Bali.",
+        )
+        self.assertFalse(any(issue.title == "Missing Target Keyword" for issue in result.issues))
+
+    def test_keyword_only_in_body_has_weak_placement(self):
+        content = self.create_content(
+            plain_text="Bali is a popular travel destination.",
+        )
+        content.title = "Complete Travel Guide"
+        content.meta_description = "A complete travel guide."
+        content.headings = Heading(h1=["Travel Guide"], h2=["Hotels"], h3=[])
+
+        result = SEOQualityEvaluator.evaluate(
+            content,
+            user_prompt="Create a travel webpage about Bali.",
+        )
+        self.assertTrue(any(issue.title == "Weak Keyword Placement" for issue in result.issues))
+
+    def test_keyword_density_is_case_insensitive(self):
+        content = self.create_content(
+            plain_text=(
+                "Bali is beautiful. "
+                "bali has beaches. "
+                "BALI has temples. "
+                "Bali has culture and food. "
+                + " ".join(["destination"] * 300)
+            ),
+        )
+        result = SEOQualityEvaluator.evaluate(
+            content,
+            user_prompt="Create a travel webpage about Bali.",
+        )
+        # 4 occurrences / ~316 words ≈ 1.27%.
+        # Therefore it must NOT be considered high density.
+        self.assertFalse(any(issue.title == "High Keyword Density" for issue in result.issues))
+
+    def test_high_keyword_density(self):
+        content = self.create_content(
+            plain_text=(
+                " ".join(["bali"] * 30)
+                + " "
+                + " ".join(["destination"] * 100)
+            ),
+        )
+        result = SEOQualityEvaluator.evaluate(
+            content,
+            user_prompt="Create a travel webpage about Bali.",
+        )
+        self.assertTrue(any(issue.title == "High Keyword Density" for issue in result.issues))
+
+    def test_low_keyword_density(self):
+        content = self.create_content(
+            plain_text=(
+                "Bali is a beautiful destination "
+                "with beaches and temples. "
+                + " ".join(["destination"] * 500)
+            ),
+        )
+        result = SEOQualityEvaluator.evaluate(
+            content,
+            user_prompt="Create a travel webpage about Bali.",
+        )
+        self.assertTrue(any(issue.title == "Low Keyword Density" for issue in result.issues))
+
+    def test_empty_prompt_skips_keyword_checks(self):
+        content = self.create_content()
+        result = SEOQualityEvaluator.evaluate(content, user_prompt="")
+        self.assertFalse(
             any(
-                issue.title == "Low Readability"
+                issue.title in (
+                    "Missing Target Keyword",
+                    "Weak Keyword Placement",
+                    "Low Keyword Density",
+                    "High Keyword Density",
+                )
                 for issue in result.issues
             )
         )
