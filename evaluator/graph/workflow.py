@@ -33,3 +33,6 @@ def build_evaluation_graph():
     graph.add_edge("score_aggregation", END)
 
     return graph.compile()
+
+
+evaluation_graph = build_evaluation_graph()
