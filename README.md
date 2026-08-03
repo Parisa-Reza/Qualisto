@@ -7,6 +7,7 @@ Qualisto is an AI powered engine that evaluates AI-generated webpage content bas
 You give it a prompt (whatever the page was supposed to accomplish) and a URL. Qualisto fetches that page, pulls out its text, HTML and metadata, then runs it through five separate evaluation modules. Each module scores the page on a different dimension: does it match the original prompt, are the facts on it actually true, is the SEO solid, would a search engine visitor be satisfied, and is the HTML technically sound. Those scores eventually get combined into one report with an overall grade and a list of things to fix.
 
 ## Workflow
+<img width="1779" height="2380" alt="image" src="https://github.com/user-attachments/assets/38bc444c-7ca0-44bb-b3bf-8f12d5e4a606" />
 
 
 
