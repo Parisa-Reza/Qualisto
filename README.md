@@ -87,11 +87,11 @@ This one asks an LLM to judge how satisfying the page would be for someone arriv
 
 A rule based structural check on the raw HTML. It looks for a title tag, a meta description, exactly one H1, empty anchor tags, anchors missing an href, images missing alt or src attributes, broken heading hierarchy (like jumping from H1 straight to H4), duplicate id attributes, and basic structural tags (html, head, body). It also checks whether links and image URLs actually resolve by validating their HTTP status. Output is a technical score plus a list of issues and recommendations.
 
-## Pending Work
+## Optimization and  Pending Work
 
-- Wire the five evaluators into an actual LangGraph orchestration graph (right now they run as independent modules)
-- Build the score aggregation engine that combines the five module scores into one final report
-- Build the UI scoreboard so results, issues and recommendations are actually visible to a user
+- The 5 evaluation modules will be parallel instead of sequential edges in langGraph (currently working on feature/frontend-report branch which is not merged with main yet )
+- Local llm (Qwen3-1.7b) has been used instead of gemini model for rate limit issue (currently working on feature/frontend-report branch which is not merged with main yet )
+- Integration and build the UI scoreboard so results, issues and recommendations are actually visible to a user (currently working on feature/frontend-report branch which is not merged with main yet )
 
 ## Setup
 
