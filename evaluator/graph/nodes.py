@@ -1,11 +1,22 @@
+import logging
+
 from evaluator.evaluators.evaluation_report import EvaluationReport
 from evaluator.evaluators.score_aggregator import ScoreAggregator
+from evaluator.evaluators.schemas import (
+    Issue,
+    KnowledgeValidationResult,
+    PromptAlignmentResult,
+    SearchQualityResult,
+)
 
 from evaluator.extractor.fetcher import HTMLFetcher
 from evaluator.extractor.parser import HTMLParser
 from evaluator.extractor.content_extractor import ContentExtractor
 
 from evaluator.graph.state import EvaluationState
+
+
+logger = logging.getLogger(__name__)
 
 
 def content_extraction_node(state: EvaluationState) -> EvaluationState:
@@ -34,12 +45,30 @@ def prompt_alignment_node(state: EvaluationState) -> EvaluationState:
 
     evaluator = state["prompt_alignment_evaluator"]
 
-    state["prompt_alignment"] = evaluator.evaluate(
-        state["user_prompt"],
-        state["website_content"],
-    )
+    try:
+        result = evaluator.evaluate(
+            state["user_prompt"],
+            state["website_content"],
+        )
+    except Exception as exc:
+        logger.exception(
+            "Prompt alignment evaluation failed; using fallback result."
+        )
+        result = PromptAlignmentResult(
+            score=0,
+            issues=[
+                Issue(
+                    severity="High",
+                    title="Prompt Alignment Evaluation Failed",
+                    description=str(exc),
+                )
+            ],
+            recommendations=[],
+        )
 
-    return state
+    return {
+        "prompt_alignment": result,
+    }
 
 
 def knowledge_validation_node(state: EvaluationState) -> EvaluationState:
@@ -49,11 +78,29 @@ def knowledge_validation_node(state: EvaluationState) -> EvaluationState:
 
     evaluator = state["knowledge_validation_evaluator"]
 
-    state["knowledge_validation"] = evaluator.evaluate(
-        state["website_content"],
-    )
+    try:
+        result = evaluator.evaluate(
+            state["website_content"],
+        )
+    except Exception as exc:
+        logger.exception(
+            "Knowledge validation evaluation failed; using fallback result."
+        )
+        result = KnowledgeValidationResult(
+            score=0,
+            issues=[
+                Issue(
+                    severity="High",
+                    title="Knowledge Validation Evaluation Failed",
+                    description=str(exc),
+                )
+            ],
+            recommendations=[],
+        )
 
-    return state
+    return {
+        "knowledge_validation": result,
+    }
 
 
 def seo_quality_node(state: EvaluationState) -> EvaluationState:
@@ -63,12 +110,14 @@ def seo_quality_node(state: EvaluationState) -> EvaluationState:
 
     evaluator = state["seo_quality_evaluator"]
 
-    state["seo_quality"] = evaluator.evaluate(
+    result = evaluator.evaluate(
         state["website_content"],
         user_prompt=state["user_prompt"],
     )
 
-    return state
+    return {
+        "seo_quality": result,
+    }
 
 
 def search_quality_node(state: EvaluationState) -> EvaluationState:
@@ -78,11 +127,29 @@ def search_quality_node(state: EvaluationState) -> EvaluationState:
 
     evaluator = state["search_quality_evaluator"]
 
-    state["search_quality"] = evaluator.evaluate(
-        state["website_content"],
-    )
+    try:
+        result = evaluator.evaluate(
+            state["website_content"],
+        )
+    except Exception as exc:
+        logger.exception(
+            "Search quality evaluation failed; using fallback result."
+        )
+        result = SearchQualityResult(
+            score=0,
+            issues=[
+                Issue(
+                    severity="High",
+                    title="Search Quality Evaluation Failed",
+                    description=str(exc),
+                )
+            ],
+            recommendations=[],
+        )
 
-    return state
+    return {
+        "search_quality": result,
+    }
 
 
 def technical_html_node(state: EvaluationState) -> EvaluationState:
@@ -92,11 +159,13 @@ def technical_html_node(state: EvaluationState) -> EvaluationState:
 
     evaluator = state["technical_html_evaluator"]
 
-    state["technical_html"] = evaluator.evaluate(
+    result = evaluator.evaluate(
         state["website_content"],
     )
 
-    return state
+    return {
+        "technical_html": result,
+    }
 
 
 def score_aggregation_node(state: EvaluationState) -> EvaluationState:

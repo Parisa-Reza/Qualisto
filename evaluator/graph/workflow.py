@@ -16,27 +16,171 @@ def build_evaluation_graph():
     """
     Build the complete Qualisto evaluation workflow.
     """
+
     graph = StateGraph(EvaluationState)
 
-    graph.add_node("content_extraction", content_extraction_node,)
-    graph.add_node("prompt_alignment", prompt_alignment_node)
-    graph.add_node("knowledge_validation", knowledge_validation_node)
-    graph.add_node("seo_quality", seo_quality_node)
-    graph.add_node("search_quality", search_quality_node)
-    graph.add_node("technical_html", technical_html_node)
-    graph.add_node("score_aggregation", score_aggregation_node)
+    # Nodes
+    graph.add_node(
+        "content_extraction",
+        content_extraction_node,
+    )
 
-    graph.add_edge(START,"content_extraction",)
+    graph.add_node(
+        "prompt_alignment",
+        prompt_alignment_node,
+    )
 
-    graph.add_edge( "content_extraction", "prompt_alignment" )
-    graph.add_edge("prompt_alignment", "knowledge_validation")
-    graph.add_edge("knowledge_validation", "seo_quality")
-    graph.add_edge("seo_quality", "search_quality")
-    graph.add_edge("search_quality", "technical_html")
-    graph.add_edge("technical_html", "score_aggregation")
-    graph.add_edge("score_aggregation", END)
+    graph.add_node(
+        "knowledge_validation",
+        knowledge_validation_node,
+    )
+
+    graph.add_node(
+        "seo_quality",
+        seo_quality_node,
+    )
+
+    graph.add_node(
+        "search_quality",
+        search_quality_node,
+    )
+
+    graph.add_node(
+        "technical_html",
+        technical_html_node,
+    )
+
+    graph.add_node(
+        "score_aggregation",
+        score_aggregation_node,
+    )
+
+    # START
+    graph.add_edge(
+        START,
+        "content_extraction",
+    )
+
+    # FAN-OUT
+    #
+    # All five evaluators can start after the
+    # webpage content has been extracted.
+    graph.add_edge(
+        "content_extraction",
+        "prompt_alignment",
+    )
+
+    graph.add_edge(
+        "content_extraction",
+        "knowledge_validation",
+    )
+
+    graph.add_edge(
+        "content_extraction",
+        "seo_quality",
+    )
+
+    graph.add_edge(
+        "content_extraction",
+        "search_quality",
+    )
+
+    graph.add_edge(
+        "content_extraction",
+        "technical_html",
+    )
+
+    # FAN-IN
+    #
+    # Score aggregation waits until all five
+    # evaluation branches have completed.
+    graph.add_edge(
+        "prompt_alignment",
+        "score_aggregation",
+    )
+
+    graph.add_edge(
+        "knowledge_validation",
+        "score_aggregation",
+    )
+
+    graph.add_edge(
+        "seo_quality",
+        "score_aggregation",
+    )
+
+    graph.add_edge(
+        "search_quality",
+        "score_aggregation",
+    )
+
+    graph.add_edge(
+        "technical_html",
+        "score_aggregation",
+    )
+
+    graph.add_edge(
+        "score_aggregation",
+        END,
+    )
 
     return graph.compile()
 
 
 evaluation_graph = build_evaluation_graph()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# from langgraph.graph import END, START, StateGraph
+
+# from evaluator.graph.nodes import (
+#     content_extraction_node,
+#     knowledge_validation_node,
+#     prompt_alignment_node,
+#     score_aggregation_node,
+#     search_quality_node,
+#     seo_quality_node,
+#     technical_html_node,
+# )
+# from evaluator.graph.state import EvaluationState
+
+
+# def build_evaluation_graph():
+#     """
+#     Build the complete Qualisto evaluation workflow.
+#     """
+#     graph = StateGraph(EvaluationState)
+
+#     graph.add_node("content_extraction", content_extraction_node,)
+#     graph.add_node("prompt_alignment", prompt_alignment_node)
+#     graph.add_node("knowledge_validation", knowledge_validation_node)
+#     graph.add_node("seo_quality", seo_quality_node)
+#     graph.add_node("search_quality", search_quality_node)
+#     graph.add_node("technical_html", technical_html_node)
+#     graph.add_node("score_aggregation", score_aggregation_node)
+
+#     graph.add_edge(START,"content_extraction",)
+
+#     graph.add_edge( "content_extraction", "prompt_alignment" )
+#     graph.add_edge("prompt_alignment", "knowledge_validation")
+#     graph.add_edge("knowledge_validation", "seo_quality")
+#     graph.add_edge("seo_quality", "search_quality")
+#     graph.add_edge("search_quality", "technical_html")
+#     graph.add_edge("technical_html", "score_aggregation")
+#     graph.add_edge("score_aggregation", END)
+
+#     return graph.compile()
+
+
+# evaluation_graph = build_evaluation_graph()
