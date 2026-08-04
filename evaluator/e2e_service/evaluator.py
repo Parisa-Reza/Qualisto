@@ -149,7 +149,7 @@ class EvaluationService:
                     )
                 ),
                 "seo_quality_evaluator": (
-                    SEOQualityEvaluator()
+                    SEOQualityEvaluator(llm=self._llm)
                 ),
                 "search_quality_evaluator": (
                     SearchQualityEvaluator(
