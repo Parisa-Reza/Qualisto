@@ -1,106 +1,67 @@
-# Search Quality Module
+# Search Quality Evaluator
 
 ## Purpose
 
-The Search Quality module checks whether a webpage is useful and satisfying for a user who arrives from a search engine.
+The Search Quality evaluator checks whether a webpage is useful and satisfying for a visitor who arrives from a search engine. It focuses on **content quality from the searcher's perspective**, not Google's actual ranking algorithm.
 
-It focuses on **content quality from the searcher's perspective**, not Google's actual ranking algorithm.
+## What It Checks
 
----
+The LLM rates each of these on a scale of 0 to 100 and returns them all alongside the overall score:
 
-## Checks
+| Signal | What it's measuring |
+|---|---|
+| Helpfulness | Does the page give genuinely useful information, not just filler? |
+| Completeness | Does it cover what a visitor reasonably needs to know? |
+| Natural writing | Does it read naturally, the way a human would write it? |
+| Repetition | Does it avoid saying the same thing over and over? |
+| AI-sounding content | Does it avoid feeling generic or obviously machine-written? |
+| Content depth | Does it go into real detail instead of staying shallow? |
+| Readability | Is it easy to scan and understand? |
+| User satisfaction | Would a visitor likely feel their search was answered? |
 
-The LLM evaluates these criteria, each from **0–100**:
+Along with these scores, the LLM also identifies the visitor's likely search intent, any useful sections that seem to be missing, concrete issues, and matching recommendations.
 
-1. **Search Intent** — Does the page satisfy what the user is likely searching for?
-2. **Helpfulness** — Does it provide genuinely useful information?
-3. **Completeness** — Does it cover the important information users expect?
-4. **Natural Writing** — Does it read naturally for humans?
-5. **Repetition** — Does it avoid unnecessary repetition?
-6. **AI-Sounding Content** — Does it avoid generic or obviously machine-generated writing?
-7. **Content Depth** — Does it provide meaningful detail rather than shallow information?
-8. **Readability** — Is it easy to read and scan?
-9. **User Satisfaction** — Is the visitor likely to feel their information need was satisfied?
+Every issue is required to say where on the page the problem is, and every recommendation has to say what to change and what should replace it. Vague comments like "the content could be improved" are explicitly disallowed by the prompt.
 
-The LLM also identifies:
+## Scoring
 
-* Missing sections
-* Issues
-* Recommendations
+The overall score, from 0 to 100, comes directly from the LLM's judgment of the page. It is not calculated by averaging the individual signal scores above, those are returned separately for visibility, but the final score is the LLM's own holistic rating.
 
----
+| Score | Meaning |
+|---|---|
+| 90–100 | Excellent |
+| 80–89 | Very good |
+| 70–79 | Good |
+| 60–69 | Acceptable |
+| 40–59 | Poor |
+| 0–39 | Very poor |
 
-## Flow
+The prompt specifically tells the LLM not to lower the score just because the page was AI generated, it should judge the actual content.
 
-```text
-WebsiteContent
-      │
-      ▼
-SearchQualityEvaluator
-      │
-      ▼
-Build Search Quality Prompt
-      │
-      ▼
-LLM
-      │
-      ▼
-Structured SearchQualityLLMResult
-      │
-      ├── Search Intent Score
-      ├── Helpfulness Score
-      ├── Completeness Score
-      ├── Natural Writing Score
-      ├── Repetition Score
-      ├── AI-Sounding Score
-      ├── Content Depth Score
-      ├── Readability Score
-      └── User Satisfaction Score
-      │
-      ▼
-Python scoring
-      │
-      ▼
-Search Quality Score /100
-      │
-      ├── Issues
-      ├── Recommendations
-      └── Missing Sections
-      │
-      ▼
-SearchQualityResult
-```
+## Issue Severity
 
-## Coordination
+Severity is not decided by the LLM. It is worked out afterward in code, based on the overall score, and applied the same way to every issue from that evaluation:
 
-```text
-Extractor
-   │
-   │ WebsiteContent
-   ▼
-Search Quality Evaluator
-   │
-   │ sends page context
-   ▼
-LLM
-   │
-   │ structured evaluation
-   ▼
-Search Quality Result
-   │
-   ▼
-Overall Evaluation Pipeline
-```
+| Score range | Severity |
+|---|---|
+| Below 40 | High |
+| 40 to 69 | Medium |
+| 70 and above | Low |
 
-### Important
+## What It Does Not Check
 
-This module does **not** check:
+This evaluator is scoped to content and search experience only. It is explicitly told to ignore:
 
-* Factual correctness
-* Property-card correctness
-* Technical SEO
-* Backlinks
-* Keyword density
-* Google's exact ranking algorithm
+- HTML and technical SEO
+- Keyword density and placement
+- Backlinks and domain authority
+- Core Web Vitals
+- Schema markup
+- Image ALT text
+- Factual correctness and property card accuracy
 
-Those responsibilities belong to other parts of the evaluation system.
+Those areas belong to the other evaluators in the pipeline.
+
+## Output
+
+The result includes the overall score, the search intent summary, all nine individual signal scores, the list of missing sections, and the issues and recommendations converted into `Issue` and `Recommendation` objects.
