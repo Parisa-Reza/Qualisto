@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pydantic import BaseModel, Field
@@ -113,15 +114,23 @@ class KnowledgeValidationEvaluator:
             uncertain_claims=result.uncertain_claims,
         )
 
-    # ============================================================
+
     # GENERAL KNOWLEDGE VALIDATION
-    # ============================================================
+
 
     def _analyze(
         self,
         content: WebsiteContent,
     ) -> KnowledgeValidationLLMResult:
         logger.info("Calling LLM for knowledge validation.")
+        logger.info("Collecting Tavily evidence...")
+
+        search_evidence = self._collect_search_evidence(content)
+
+        logger.info(
+            "Collected %d characters of search evidence.",
+            len(search_evidence),
+        )
 
         structured_llm = self.llm.with_structured_output(
             KnowledgeValidationLLMResult
@@ -129,7 +138,10 @@ class KnowledgeValidationEvaluator:
 
         try:
             result = structured_llm.invoke(
-                self._build_prompt(content)
+                self._build_prompt(
+                    content,
+                    search_evidence=search_evidence,
+                )
             )
         except Exception:
             logger.exception(
@@ -141,9 +153,9 @@ class KnowledgeValidationEvaluator:
 
         return result
 
-    # ============================================================
+   
     # PARALLEL PROPERTY CARD VALIDATION
-    # ============================================================
+
 
     def _validate_property_cards(
         self,
@@ -295,21 +307,129 @@ class KnowledgeValidationEvaluator:
             PropertyCardValidationLLMResult
         )
 
+        logger.info(
+            "Searching Tavily for property card: %s",
+            getattr(card, "title", ""),
+        )
+        search_evidence = self._collect_search_evidence(
+            content,
+            card=card,
+        )
+
         return structured_llm.invoke(
             self._build_property_card_prompt(
                 content,
                 card,
+                search_evidence=search_evidence,
             )
         )
+    def _collect_search_evidence(
+        self,
+        content: WebsiteContent,
+        card=None,
+    ) -> str:
 
-    # ============================================================
+        if not self.search_client:
+            return ""
+
+        query = self._build_search_query(
+            content,
+            card,
+        )
+
+        if not query:
+            return ""
+
+        logger.info(
+            "Searching Tavily | query=%s",
+            query,
+        )
+
+        try:
+
+            results = self.search_client.search(
+                query=query,
+                max_results=5,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Tavily search failed."
+            )
+
+            return ""
+
+        if not results:
+            return ""
+
+        evidence = []
+
+        for index, result in enumerate(results, start=1):
+
+            title = result.get("title", "")
+            url = result.get("url", "")
+            snippet = result.get("content", "")
+
+            evidence.append(
+                f"""
+    Result {index}
+
+    Title:
+    {title}
+
+    URL:
+    {url}
+
+    Snippet:
+    {snippet}
+    """
+            )
+
+        return "\n".join(evidence)
+    @staticmethod
+    def _build_search_query(
+        content: WebsiteContent,
+        card=None,
+    ) -> str:
+
+        if card:
+
+            return " ".join(
+                filter(
+                    None,
+                    [
+                        getattr(card, "title", ""),
+                        getattr(card, "city", ""),
+                        getattr(card, "country", ""),
+                        getattr(card, "property_type", ""),
+                    ],
+                )
+            )
+
+        parts = []
+
+        if content.title:
+            parts.append(content.title)
+
+        for heading_list in (
+            content.headings.h1,
+            content.headings.h2,
+            content.headings.h3,
+        ):
+            parts.extend(heading_list)
+
+        return " ".join(parts)[:400]
+    
+
     # PROPERTY CARD PROMPT
-    # ============================================================
+
 
     @staticmethod
     def _build_property_card_prompt(
         content: WebsiteContent,
         card,
+        search_evidence: str = "",
     ) -> str:
 
         headings = [
@@ -356,6 +476,21 @@ PROPERTY TYPE:
 PAGE CONTEXT:
 {content.plain_text[:6000]}
 
+SEARCH EVIDENCE:
+EXTERNAL SEARCH RESULTS (Tavily):
+
+{search_evidence or "No external evidence was retrieved.Do not assume the webpage is incorrect solely because evidence is unavailable."}
+
+Use these search results when verifying factual claims.
+
+Do NOT ignore them.
+
+If the webpage contradicts reliable external evidence,
+mark the claim as unsupported.
+
+If the evidence is inconclusive,
+mark the claim as uncertain.
+
 TASK:
 Determine whether the property card is contextually appropriate
 for this webpage.
@@ -366,14 +501,39 @@ The property is reasonably relevant to the webpage destination.
 CONTEXT_MISMATCH:
 The property clearly belongs to a different destination.
 
-Nearby cities, metropolitan areas, suburbs, and directly relevant
-travel areas should NOT automatically be considered mismatches.
+IMPORTANT DESTINATION MATCHING RULES
+
+The destination of the property card must match the primary destination
+of the webpage.
+
+If the webpage is about New York City,
+only properties physically located inside New York City
+(Manhattan, Brooklyn, Queens, Bronx, Staten Island)
+are considered valid.
+
+Properties located in Jersey City, Newark,
+Hoboken, Long Island, Connecticut,
+or any other nearby city are NOT considered part
+of New York City.
+
+Likewise:
+
+Paris != Versailles
+London != Oxford
+Tokyo != Yokohama
+
+Geographic proximity does NOT imply destination relevance.
+
+If the property belongs to another city,
+return:
+
+status=context_mismatch
 
 Examples:
 
 New York City page + New York City hotel = valid.
 
-New York City page + Jersey City hotel = valid.
+New York City page + Jersey City hotel = context_mismatch.
 
 New York City page + Paris hotel = context_mismatch.
 
@@ -399,13 +559,14 @@ reason:
 Give a short, concrete explanation.
 """
 
-    # ============================================================
+    
     # GENERAL KNOWLEDGE PROMPT
-    # ============================================================
+    
 
     @staticmethod
     def _build_prompt(
         content: WebsiteContent,
+        search_evidence: str = "",
     ) -> str:
 
         headings = [
@@ -435,6 +596,14 @@ HEADINGS:
 
 WEBPAGE CONTENT:
 {content.plain_text[:16000]}
+
+SEARCH EVIDENCE:
+EXTERNAL SEARCH RESULTS (Tavily):
+
+{search_evidence or "No external evidence was found."}
+
+Use these search results when verifying factual claims about destinations,
+attractions, accommodations, and travel information.
 
 CHECK FOR:
 
