@@ -1,6 +1,7 @@
 import logging
 
 from evaluator.evaluators.evaluation_report import EvaluationReport
+from evaluator.services.evaluation_storage import save_evaluation
 from evaluator.evaluators.score_aggregator import ScoreAggregator
 from evaluator.evaluators.schemas import (
     Issue,
@@ -309,25 +310,34 @@ def score_aggregation_node(
         aggregation.final_score,
     )
 
-    state["evaluation_report"] = (
-        EvaluationReport.from_results(
-            aggregation=aggregation,
-            prompt_alignment=state[
-                "prompt_alignment"
-            ],
-            knowledge_validation=state[
-                "knowledge_validation"
-            ],
-            seo_quality=state[
-                "seo_quality"
-            ],
-            search_quality=state[
-                "search_quality"
-            ],
-            technical_html=state[
-                "technical_html"
-            ],
-        )
+
+    report = EvaluationReport.from_results(
+        aggregation=aggregation,
+        prompt_alignment=state[
+            "prompt_alignment"
+        ],
+        knowledge_validation=state[
+            "knowledge_validation"
+        ],
+        seo_quality=state[
+            "seo_quality"
+        ],
+        search_quality=state[
+            "search_quality"
+        ],
+        technical_html=state[
+            "technical_html"
+        ],
+    )
+
+    state["evaluation_report"] = report
+
+    save_evaluation(
+        url=state["url"],
+        prompt=state["user_prompt"],
+        report=report,
     )
 
     return state
+
+
