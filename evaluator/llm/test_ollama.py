@@ -22,7 +22,7 @@ class OllamaModelTest(SimpleTestCase):
 
         self.assertEqual(
             model.model,
-            "llama3.2:3b",
+            "qwen3:1.7b",
         )
 
         self.assertEqual(
