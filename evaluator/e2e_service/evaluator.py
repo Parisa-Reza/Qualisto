@@ -1,26 +1,33 @@
+
 """
 End-to-end webpage evaluation service.
-
-This is the single application-level entry point for running the complete Qualisto evaluation pipeline.
-
-Flow:
-
-user_prompt + url
-        ↓
-LangGraph workflow
-        ↓
-individual evaluators
-        ↓
-score aggregation
-        ↓
-evaluation report
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from evaluator.evaluators.knowledge_validation import (
+    KnowledgeValidationEvaluator,
+)
+from evaluator.evaluators.prompt_alignment import (
+    PromptAlignmentEvaluator,
+)
+from evaluator.evaluators.search_quality import (
+    SearchQualityEvaluator,
+)
+from evaluator.evaluators.seo_content_quality import (
+    SEOQualityEvaluator,
+)
+from evaluator.evaluators.technical_html import (
+    TechnicalHTMLEvaluator,
+)
+
 from evaluator.graph.workflow import evaluation_graph
+
+
+logger = logging.getLogger(__name__)
 
 
 class EvaluationService:
@@ -29,70 +36,223 @@ class EvaluationService:
     webpage evaluation workflow.
     """
 
-    def __init__(self, graph: Any | None = None) -> None:
-        """
-        Initialize the evaluation service.
+    def __init__(
+        self,
+        graph: Any | None = None,
+        *,
+        llm: Any | None = None,
+        search_client: Any | None = None,
+    ) -> None:
 
-        Args:
-            graph:
-                Optional compiled LangGraph workflow.Dependency injection is supported so tests can provide a fake graph without calling external services.
-        """
-        self._graph = graph or evaluation_graph
+        self._using_default_graph = graph is None
 
-    def evaluate( self, *, url: str, user_prompt: str) -> dict[str, Any]:
-        """
-        Evaluate a webpage against the user's prompt.
+        self._graph = (
+            evaluation_graph
+            if graph is None
+            else graph
+        )
 
-        Args:
-            url: URL of the webpage to evaluate.
-            user_prompt: Original prompt describing the requested webpage.
+        self._llm = llm
+        self._search_client = search_client
 
-        Returns:
-            Final evaluation result produced by the LangGraph workflow.
+        logger.info(
+            "EvaluationService initialized | default_graph=%s | llm=%s | search_client=%s",
+            self._using_default_graph,
+            type(llm).__name__ if llm else None,
+            type(search_client).__name__ if search_client else None,
+        )
 
-        Raises:
-            ValueError:
-                If URL or user prompt is empty.
-        """
+    def evaluate(
+        self,
+        *,
+        url: str,
+        user_prompt: str,
+    ) -> dict[str, Any]:
+
+        logger.info(
+            "Evaluation started | url=%s",
+            url,
+        )
 
         self._validate_input(
             url=url,
             user_prompt=user_prompt,
         )
 
-        initial_state = {
+        initial_state: dict[str, Any] = {
             "url": url.strip(),
             "user_prompt": user_prompt.strip(),
         }
 
-        result = self._graph.invoke(initial_state)
+        logger.info(
+            "Initial evaluation state created | url=%s | prompt_length=%d",
+            initial_state["url"],
+            len(initial_state["user_prompt"]),
+        )
+
+        # When a fake graph is injected, keep the service
+        # completely independent of external dependencies.
+        if not self._using_default_graph:
+
+            logger.info(
+                "Using injected evaluation graph."
+            )
+
+            result = self._graph.invoke(initial_state)
+
+            if not isinstance(result, dict):
+                logger.error(
+                    "Evaluation workflow returned invalid result type: %s",
+                    type(result).__name__,
+                )
+                raise TypeError(
+                    "Evaluation workflow must return a dictionary state."
+                )
+
+            logger.info(
+                "Evaluation completed using injected graph."
+            )
+
+            return result
+
+        if self._llm is None:
+            logger.error(
+                "Evaluation failed: LLM is missing."
+            )
+            raise RuntimeError(
+                "LLM is required to run the evaluation workflow."
+            )
+
+        if self._search_client is None:
+            logger.error(
+                "Evaluation failed: search client is missing."
+            )
+            raise RuntimeError(
+                "Search client is required to run knowledge validation."
+            )
+
+        logger.info(
+            "Creating evaluator instances."
+        )
+
+        initial_state.update(
+            {
+                "prompt_alignment_evaluator": (
+                    PromptAlignmentEvaluator(
+                        llm=self._llm
+                    )
+                ),
+                "knowledge_validation_evaluator": (
+                    KnowledgeValidationEvaluator(
+                        llm=self._llm,
+                        search_client=self._search_client,
+                    )
+                ),
+                "seo_quality_evaluator": (
+                    SEOQualityEvaluator(llm=self._llm)
+                ),
+                "search_quality_evaluator": (
+                    SearchQualityEvaluator(
+                        llm=self._llm
+                    )
+                ),
+                "technical_html_evaluator": (
+                    TechnicalHTMLEvaluator()
+                ),
+            }
+        )
+
+        logger.info(
+            "All evaluator instances created."
+        )
+
+        logger.info(
+            "Starting LangGraph evaluation workflow."
+        )
+
+        try:
+
+            result = self._graph.invoke(initial_state)
+
+        except Exception:
+
+            logger.exception(
+                "Evaluation workflow failed."
+            )
+
+            raise
 
         if not isinstance(result, dict):
+            logger.error(
+                "Evaluation workflow returned invalid result type: %s",
+                type(result).__name__,
+            )
             raise TypeError(
                 "Evaluation workflow must return a dictionary state."
             )
 
+        logger.info(
+            "LangGraph evaluation workflow completed."
+        )
+
+        logger.info(
+            "Evaluation finished successfully."
+        )
+
         return result
 
     @staticmethod
-    def _validate_input(*, url: str, user_prompt: str,) -> None:
-        """Validate required evaluation inputs."""
+    def _validate_input(
+        *,
+        url: str,
+        user_prompt: str,
+    ) -> None:
+
+        logger.debug(
+            "Validating evaluation input."
+        )
 
         if not isinstance(url, str) or not url.strip():
-            raise ValueError("URL must be a non-empty string.")
+            logger.warning(
+                "Invalid evaluation input: URL is empty."
+            )
+            raise ValueError(
+                "URL must be a non-empty string."
+            )
 
-        if not isinstance(user_prompt, str) or not user_prompt.strip():
+        if (
+            not isinstance(user_prompt, str)
+            or not user_prompt.strip()
+        ):
+            logger.warning(
+                "Invalid evaluation input: user prompt is empty."
+            )
             raise ValueError(
                 "User prompt must be a non-empty string."
             )
 
+        logger.debug(
+            "Evaluation input validation passed."
+        )
 
-def evaluate_webpage( *, url: str, user_prompt: str) -> dict[str, Any]:
-    """
-    Convenience function for callers that do not need to instantiate EvaluationService explicitly.
-    """
 
-    service = EvaluationService()
+def evaluate_webpage(
+    *,
+    url: str,
+    user_prompt: str,
+    llm: Any | None = None,
+    search_client: Any | None = None,
+) -> dict[str, Any]:
+
+    logger.info(
+        "evaluate_webpage() called | url=%s",
+        url,
+    )
+
+    service = EvaluationService(
+        llm=llm,
+        search_client=search_client,
+    )
 
     return service.evaluate(
         url=url,

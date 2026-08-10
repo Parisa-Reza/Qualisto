@@ -15,6 +15,12 @@ class EvaluationState(TypedDict, total=False):
 
     website_content: WebsiteContent
 
+    prompt_alignment_evaluator: object
+    knowledge_validation_evaluator: object
+    seo_quality_evaluator: object
+    search_quality_evaluator: object
+    technical_html_evaluator: object
+
     prompt_alignment: EvaluationResult
     knowledge_validation: EvaluationResult
     seo_quality: EvaluationResult

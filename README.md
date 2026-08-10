@@ -32,7 +32,7 @@ The flow works like this:
 | HTML parsing | BeautifulSoup4, lxml |
 | DB driver | psycopg2-binary |
 | Config | python-dotenv |
-| Containerization | Docker Compose |
+| Containerization | Docker |
 | Language | Python |
 
 ## Features
@@ -52,46 +52,65 @@ Here's what each of the five modules in `docs/` actually checks.
 
 ### 1. Prompt Alignment Evaluator
 
-Uses an LLM to judge whether the generated page actually satisfies the original request. This one is purely about content relevance, not technical quality. It checks whether the topics the user asked for are actually covered, whether anything important is missing, whether the page stays on topic or drifts, and whether there's content that's clearly unrelated to the request. It outputs an overall alignment score from 0 to 100. It deliberately ignores HTML structure, SEO, keyword density, links, images and meta tags since those belong to the other modules.
+- Uses an LLM to judge whether the generated page actually satisfies the original request.
+- Verifies if the page matches the requested location or subject
+- Checks if specific sections or information requested by the user are present
+- Identifies parts of the prompt left unaddressed
+- Flags sections unrelated to the target destination or topic
+- Detects internal conflicts with the original request
+- Requires every issue to pinpoint exact locations and every recommendation to specify actionable changes
+- Receives the original user request and the generated webpage content
+- The LLM judges content relevance while ignoring SEO, code, and writing quality
+- Outputs an alignment score from 0 to 100
+- Automatically assigns uniform issue severity based on the score tier
+- Formats final results into scores, missing requirements, off-topic sections, structured issues, and actionable recommendations
 
 ### 2. Knowledge Validation Evaluator
 
-Checks two separate things: whether factual claims on the page are actually true, and whether property cards on the page belong to the right destination.
+- Verifies factual correctness, destination correctness, and property card relevance while ignoring SEO and HTML quality
+- Performs overall general knowledge validation followed by individual property card validation
+- Builds search queries from page titles and headings to fetch external evidence via Tavily Search
+- Passes webpage content and search evidence to Gemini LLM to classify claims as verified, unsupported, or uncertain
+- Validates every extracted property card independently to check for destination context mismatches
+- Uses ThreadPoolExecutor to run property card validations concurrently and drastically reduce execution time
+- Generates specific issues and recommendations whenever a property card context mismatch occurs
+- Calculates the final score by subtracting penalties from the base Gemini score for each card mismatch
+- Returns a final KnowledgeValidationResult containing scores, claims, issues, and recommendations
 
-For claims, a claim extractor pulls factual statements out of the page text, Tavily searches the web for evidence, and Gemini looks at the claim plus that evidence and returns verified, unsupported or uncertain. Unsupported claims become a high severity issue, uncertain ones a medium severity issue.
+### 3. Technical HTML Evaluator
 
-For property cards, Gemini is given the page's title, headings and context along with each card's location, and returns either valid or context mismatch. So a New York travel guide with a Jersey City apartment listing passes, but the same page listing a Paris hotel gets flagged.
+- Performs rule-based validation of structural and technical webpage health across six categories: Structure, Metadata, Links, Images, Accessibility, and HTML Validation
+- Checks foundational HTML elements, unique IDs, heading hierarchies, title and meta description tags, and element completeness
+- Validates links and images by inspecting attributes, text content, and live URL reachability
+- Provides precise, developer-readable issue locations using CSS-style breadcrumbs, line numbers, and truncated outer HTML snippets
+- Calculates scores starting at 100 with fixed per-category penalties rather than per-issue deductions, floored at a minimum score of 0
+- Uses concurrent ThreadPoolExecutor workers (up to 10 max workers) with a 5-second timeout and HEAD-first, GET-fallback logic to accelerate live URL validations
+- Returns a final technical HTML score along with a structured list of issues and matching improvement recommendations
 
-It does not touch keyword density, SEO, readability, search intent or writing style; that's someone else's job.
 
-### 3. SEO Content Quality Evaluator
-
-A rule based evaluator that starts at 100 and deducts points per issue (high severity costs 15, medium costs 8, low costs 3, and the score never drops below 0). It checks:
-
-- Title length (flags missing titles, and anything under 30 or over 60 characters)
-- Meta description length (missing, under 120, or over 160 characters)
-- Content length (thin content under 300 words up through excessively long content over 4000 words)
-- Long paragraphs, anything over 180 words
-- Internal link distribution, expecting roughly one internal link per 500 words
-- External link distribution, flagging pages with more than 25 external links
-- Image to content ratio, expecting roughly one image per 800 words
-- Duplicate headings across h1 through h6
-- Generic headings like "home", "about" or "services"
-- Readability, flagging an average sentence length over 25 words
 
 ### 4. Search Quality Evaluator
 
-This one asks an LLM to judge how satisfying the page would be for someone arriving from a search engine. It's not trying to replicate Google's actual ranking algorithm, just judging content quality from the searcher's point of view. It scores search intent match, helpfulness, completeness, natural writing, repetition, how "AI sounding" the content reads, content depth, readability and overall user satisfaction, each on a 0 to 100 scale, and also flags missing sections. It stays out of factual correctness, technical SEO and backlinks; those belong to other modules.
+- Evaluates search content quality and visitor experience across signals like helpfulness, completeness, natural writing, repetition, AI-feel, depth, readability, and user satisfaction
+- Generates an overall score from 0 to 100 via LLM without penalizing pages simply for being AI-generated
+- Automatically assigns uniform issue severity based on score tiers (High for below 40, Medium for 40 to 69, Low for 70 and above)
+- Ignores technical SEO, keyword density, backlinks, Core Web Vitals, schema markup, image ALT text, and factual accuracy
+- Returns overall score, search intent summary, individual signal scores, missing sections, and structured issues and recommendations
 
-### 5. Technical HTML Evaluator
+### 5. SEO Content Quality Evaluator
 
-A rule based structural check on the raw HTML. It looks for a title tag, a meta description, exactly one H1, empty anchor tags, anchors missing an href, images missing alt or src attributes, broken heading hierarchy (like jumping from H1 straight to H4), duplicate id attributes, and basic structural tags (html, head, body). It also checks whether links and image URLs actually resolve by validating their HTTP status. Output is a technical score plus a list of issues and recommendations.
+- Starts every page at a score of 100, deducting 15 for High, 8 for Medium, and 3 for Low severity issues down to a minimum of 0
+- Checks title length for missing, too short (<30 chars), or too long (>60 chars) conditions
+- Checks meta description length for missing, too short (<120 chars), or too long (>160 chars) conditions
+- Evaluates total word count for thin (<300), low (300-599), very long (2501-4000), or excessive (>4000) content ranges
+- Flags long paragraphs if any single paragraph exceeds 180 words
+- Evaluates internal link coverage (expected ~1 per 500 words, must start with a slash) and external link limits (flags if >25)
+- Checks image coverage, expecting roughly 1 image for every 800 words of content
+- Identifies duplicate headings across h1 through h6 and flags generic headings against a predefined blocklist
+- Assesses readability by flagging average sentence lengths exceeding 25 words
+- Extracts target topics from the user prompt via language model to check for missing topics, weak placements, and keyword density bounds (0.5% to 2%)
 
-## Optimization and  Pending Work
 
-- The 5 evaluation modules will be parallel instead of sequential edges in langGraph (currently working on feature/frontend-report branch which is not merged with main yet )
-- Local llm (Qwen3-1.7b) has been used instead of gemini model for rate limit issue (currently working on feature/frontend-report branch which is not merged with main yet )
-- Integration and build the UI scoreboard so results, issues and recommendations are actually visible to a user (currently working on feature/frontend-report branch which is not merged with main yet )
 
 ## Setup
 
@@ -159,10 +178,3 @@ python manage.py runserver
 
 The app runs at `http://127.0.0.1:8000/`.
 
-### 7. Run the tests (optional)
-
-Each module has its own test file (things like `test_seo_content_quality.py`, `test_technical_html.py`, `test_knowledge_validation.py`). Run all of them with:
-
-```bash
-python manage.py test
-```

@@ -1,58 +1,129 @@
+import logging
+
 from pydantic import BaseModel, Field
+
 from evaluator.extractor.schemas import WebsiteContent
-from evaluator.evaluators.schemas import Issue, Recommendation, SearchQualityResult
+from evaluator.evaluators.schemas import (
+    Issue,
+    Recommendation,
+    SearchQualityResult,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 class SearchQualityLLMResult(BaseModel):
-    """
-    Structured response returned by the LLM.
 
-    NOTE:
-    Search intent is a description, not a numeric score.
-    All other quality dimensions use a 0-100 score.
-    """
-    # FIX: search_intent is text, not search_intent_score.
     search_intent: str = ""
-    score: int = Field(ge=0, le=100)
-    helpfulness_score: int = Field(ge=0, le=100)
-    completeness_score: int = Field(ge=0, le=100)
-    natural_writing_score: int = Field(ge=0, le=100)
-    repetition_score: int = Field(ge=0, le=100)
-    ai_sounding_score: int = Field(ge=0, le=100)
-    content_depth_score: int = Field(ge=0, le=100)
-    readability_score: int = Field(ge=0, le=100)
-    user_satisfaction_score: int = Field(ge=0, le=100)
-    missing_sections: list[str] = Field(default_factory=list)
-    issues: list[str] = Field(default_factory=list)
-    recommendations: list[str] = Field(default_factory=list)
+
+    score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    helpfulness_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    completeness_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    natural_writing_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    repetition_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    ai_sounding_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    content_depth_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    readability_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    user_satisfaction_score: int = Field(
+        ge=0,
+        le=100,
+    )
+
+    missing_sections: list[str] = Field(
+        default_factory=list
+    )
+
+    issues: list[str] = Field(
+        default_factory=list
+    )
+
+    recommendations: list[str] = Field(
+        default_factory=list
+    )
 
 
 class SearchQualityEvaluator:
-    """
-    Evaluates webpage content from a search-user perspective.
-
-    This evaluator checks whether a user arriving from search
-    is likely to find the page useful, complete, readable,
-    natural, and satisfying.
-
-    It does NOT evaluate:
-    - Google's actual ranking position
-    - technical SEO
-    - factual correctness
-    - property-card correctness
-    - backlinks
-    - keyword density
-    """
 
     def __init__(self, llm):
+
         self.llm = llm
 
-    def evaluate(self, content: WebsiteContent) -> SearchQualityResult:
-        result = self._analyze(content)
-        severity = self._issue_severity(result.score)
+        logger.info(
+            "SearchQualityEvaluator initialized | llm=%s",
+            type(llm).__name__,
+        )
 
-        issues = [Issue(severity=severity, title="Search Quality Issue", description=issue) for issue in result.issues]
-        recommendations = [Recommendation(title="Improve Search Quality", description=recommendation) for recommendation in result.recommendations]
+    def evaluate(
+        self,
+        content: WebsiteContent,
+    ) -> SearchQualityResult:
+
+        logger.info(
+            "Search quality evaluation started."
+        )
+
+        result = self._analyze(content)
+
+        severity = self._issue_severity(
+            result.score
+        )
+
+        issues = [
+            Issue(
+                severity=severity,
+                title="Search Quality",
+                description=issue,
+            )
+            for issue in result.issues
+        ]
+
+        recommendations = [
+            Recommendation(
+                title="Improve Search Quality",
+                description=recommendation,
+            )
+            for recommendation in result.recommendations
+        ]
+
+        logger.info(
+            "Search quality evaluation completed | score=%d | issues=%d | recommendations=%d",
+            result.score,
+            len(issues),
+            len(recommendations),
+        )
 
         return SearchQualityResult(
             score=result.score,
@@ -70,104 +141,168 @@ class SearchQualityEvaluator:
             recommendations=recommendations,
         )
 
-    def _analyze(self, content: WebsiteContent) -> SearchQualityLLMResult:
-        structured_llm = self.llm.with_structured_output(SearchQualityLLMResult)
-        prompt = self._build_prompt(content)
-        return structured_llm.invoke(prompt)
+    def _analyze(
+        self,
+        content: WebsiteContent,
+    ) -> SearchQualityLLMResult:
+
+        logger.info(
+            "Calling LLM for search quality evaluation."
+        )
+
+        structured_llm = self.llm.with_structured_output(
+            SearchQualityLLMResult
+        )
+
+        result = structured_llm.invoke(
+            self._build_prompt(content)
+        )
+
+        logger.info(
+            "Search quality LLM call successful."
+        )
+
+        return result
 
     @staticmethod
-    def _build_prompt(content: WebsiteContent) -> str:
+    def _build_prompt(
+        content: WebsiteContent,
+    ) -> str:
+
         headings = []
-        for heading_list in (content.headings.h1, content.headings.h2, content.headings.h3):
-            headings.extend(heading_list)
+
+        for heading_list in (
+            content.headings.h1,
+            content.headings.h2,
+            content.headings.h3,
+        ):
+            headings.extend(
+                heading_list
+            )
 
         return f"""
-Evaluate the quality of this webpage from the perspective
-of a user who discovers the page through a search engine.
+You are evaluating an AI-generated travel webpage from the perspective
+of a real human visitor who found the page through search.
 
-The goal is to determine whether the page satisfies the
-user's likely information need.
+Your ONLY responsibility is SEARCH / CONTENT QUALITY.
 
-PAGE TITLE:
+================ PAGE TITLE ================
 {content.title}
 
-META DESCRIPTION:
+================ META DESCRIPTION ================
 {content.meta_description}
 
-HEADINGS:
+================ HEADINGS ================
 {headings}
 
-PAGE CONTENT:
-{content.plain_text[:12000]}
+================ PAGE CONTENT ================
+{content.plain_text[:16000]}
 
-Evaluate the following dimensions.
+================ EVALUATE ================
 
-1. SEARCH INTENT
+1. Search intent
 
-Describe the likely search intent this page is tryiny to satisfy.
+Identify what a visitor is likely looking for.
 
-Return this as a short text description.
+2. Helpfulness
 
-2. HELPFULNESS
+Does the page provide useful information instead of generic filler?
 
-Does the page provide genuinely useful information instead of generic filler?
+3. Completeness
 
-Score from 0 to 100.
+Does it cover the information a visitor reasonably needs?
 
-3. COMPLETENESS
+4. Natural writing
 
-Does the page cover the important information a user would reasonably expect?
+Does it sound natural and human-readable?
 
-Score from 0 to 100.
+5. Repetition
 
-4. NATURAL WRITING
+Does the page unnecessarily repeat the same information?
 
-Does the content read naturally and clearly for humans?
-
-Score from 0 to 100.
-
-5. REPETITION
-
-Does the page avoid unnecessary repetition?
-
-100 = very little unnecessary repetition.
+100 = minimal unnecessary repetition.
 0 = extremely repetitive.
 
-6. AI-SOUNDING CONTENT
+6. AI-sounding content
 
-Does the content feel generic, formulaic, repetitive, or obviously machine-generated?
+Does the content sound formulaic, generic, repetitive, or obviously
+machine-generated?
 
-100 = natural and original sounding.
+100 = natural human-like writing.
 0 = strongly AI-like.
 
-7. CONTENT DEPTH
+7. Content depth
 
-Does the page provide meaningful detail instead of shallow generic information?
+Does the page provide meaningful details?
 
-Score from 0 to 100.
+8. Readability
 
-8. MISSING SECTIONS
+Can a visitor easily scan and understand the page?
 
-Identify important sections that are missing and would reasonably help the user.
+9. User satisfaction
 
-Score completeness from 0 to 100 through the completeness_score field.
+Would the visitor likely feel that their search intent was satisfied?
 
-9. READABILITY
+10. Missing sections
 
-Is the content easy to understand, scan, and consume?
+Identify useful sections that are actually missing.
 
-Score from 0 to 100.
+================ ISSUE RULES ================
 
-10. USER SATISFACTION
+Only report concrete problems.
 
-Would a typical search visitor likely feel that their
-information need was satisfied?
+Every issue MUST explain WHERE the problem occurs.
 
-Score from 0 to 100.
+Examples:
 
-OVERALL SCORE:
+"Under 'Things to Do', the descriptions repeat the same generic
+information about sightseeing without providing distinct details."
 
-Calculate an overall quality score from 0 to 100.
+"The 'Where to Stay' section is only two sentences long and does not
+give visitors enough information to choose an area."
+
+Do NOT produce generic statements such as:
+
+"The content could be improved."
+
+"The page may confuse users."
+
+"The website should be better."
+
+================ RECOMMENDATION RULES ================
+
+Every recommendation must provide an actionable solution.
+
+It must explain:
+
+1. where the change is needed
+2. what should be changed
+3. what kind of content should be added/replaced
+
+Example:
+
+"Expand the 'Where to Stay' section with 3-5 distinct neighborhood
+options and explain what type of traveler each area suits."
+
+================ DO NOT EVALUATE ================
+
+Do NOT evaluate:
+
+- HTML
+- technical SEO
+- keyword density
+- keyword placement
+- backlinks
+- domain authority
+- Core Web Vitals
+- schema markup
+- image ALT
+- factual correctness
+- property/card factual validation
+
+Those are handled by other evaluators.
+
+================ SCORING ================
 
 90-100 = excellent
 80-89 = very good
@@ -176,34 +311,27 @@ Calculate an overall quality score from 0 to 100.
 40-59 = poor
 0-39 = very poor
 
-IMPORTANT:
+The score must reflect the actual content.
 
-Do NOT evaluate:
+If the content is good, give it a good score.
 
-- technical SEO
-- HTML quality
-- keyword density
-- keyword placement
-- backlinks
-- domain authority
-- Core Web Vitals
-- schema markup
-- image ALT attributes
-- Google's exact ranking algorithm
-- factual correctness
-- property-card correctness
+Do not lower the score simply because the page is AI-generated.
 
-Do not invent facts about the webpage.
+Return concrete issues and recommendations only.
 
-Return concrete issues and concrete recommendations.
-
-Return the result using the required structured schema.
+Return the required structured output.
 """
 
     @staticmethod
-    def _issue_severity(score: int) -> str:
+    def _issue_severity(
+        score: int,
+    ) -> str:
+
         if score < 40:
             return "High"
+
         if score < 70:
             return "Medium"
+
         return "Low"
+

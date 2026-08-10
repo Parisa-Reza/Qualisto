@@ -1,276 +1,751 @@
 # Knowledge Validation Module
 
-## Claims → factual correctness
-```
-Webpage text
-   ↓
-ClaimExtractor
-   ↓
-"The Eiffel Tower is in Paris."
-   ↓
-Tavily → finds web evidence
-   ↓
-Gemini → verifies the claim
-   ↓
-verified / unsupported / uncertain
-```
+---
 
-## Cards → destination/context correctness
+# 1. Purpose
 
-```
-Webpage: New York City
-   ↓
-Property Card: Paris Hotel
-   ↓
-Gemini compares page context + card location
-   ↓
-valid / context_mismatch
-```
+The **Knowledge Validation** module verifies whether the factual information generated on a travel webpage is accurate and contextually correct.
 
-***Claim = “Is this fact true?”*** <br>
-***Card = “Does this property belong on this page?***
+It focuses only on:
 
-## 1. Purpose
+- Factual correctness
+- Destination correctness
+- Property card relevance
 
-The Knowledge Validation module checks whether factual information on a webpage is supported by external evidence.
+It **does not evaluate**:
 
-For our travel website, it also checks whether **property cards belong to the webpage's destination**.
+- SEO
+- Readability
+- HTML quality
+- Keyword density
+- Writing style
 
-Example:
+---
+
+# 2. Overall Workflow
 
 ```text
-Page: New York City Travel Guide
-
-✓ Jersey City Apartment
-✗ Paris Hotel
+                    WebsiteContent
+                          │
+                          ▼
+             KnowledgeValidationEvaluator
+                          │
+          ┌───────────────┴────────────────┐
+          │                                │
+          ▼                                ▼
+ General Knowledge Validation      Property Card Validation
+          │                                │
+          ▼                                ▼
+ Collect Search Evidence           Validate Cards Concurrently
+      (Tavily Search)                (ThreadPoolExecutor)
+          │                                │
+          ▼                                ▼
+      Gemini LLM                  Multiple Gemini Calls
+          │                                │
+          └───────────────┬────────────────┘
+                          ▼
+            Merge Results & Apply Penalties
+                          │
+                          ▼
+           KnowledgeValidationResult
 ```
 
 ---
 
-## 2. Main Flow
+# 3. General Knowledge Validation Flow
+
+The webpage content is validated as a whole before individual property cards are checked.
+
+Flow:
 
 ```text
-Website
-   │
-   ▼
-ContentExtractor
-   │
-   ▼
 WebsiteContent
-   │
-   ├───────────────┐
-   │               │
-   ▼               ▼
-Claims         Property Cards
-   │               │
-   ▼               ▼
-ClaimExtractor   Card Validation
-   │               │
-   ▼               ▼
-Tavily Search      │
-   │               │
-   ▼               │
-Web Evidence       │
-   │               │
-   └───────┬───────┘
-           ▼
-         Gemini
-           │
-           ▼
-   KnowledgeValidationResult
+      │
+      ▼
+Build Search Query
+      │
+      ▼
+Tavily Search
+      │
+      ▼
+External Search Evidence
+      │
+      ▼
+Prompt Builder
+      │
+      ▼
+Gemini LLM
+      │
+      ▼
+KnowledgeValidationLLMResult
+```
+1. One Tavily search
+- Query built from the page title + H1 + H2 + H3.
+- Returns up to 5 search results.
+2. One Gemini call 
+**Receives**
+- Webpage content
+- Tavily search evidence
+- Instructions (your prompt)
+**Returns:**
+- Score
+- Verified claims
+- Unsupported claims
+- Uncertain claims
+- Issues
+- Recommendations
+---
+
+# 4. How Tavily and Gemini Work Together
+
+The module combines **retrieval** and **reasoning**.
+
+## Step 1 — Build Search Query
+
+A search query is generated from the webpage.
+
+Example
+
+```text
+Page Title:
+Things to Do in London
+
+H1:
+London Travel Guide
+
+H2:
+Best Attractions
+
+H2:
+Hotels in London
+```
+
+Generated query
+
+```text
+Things to Do in London
+London Travel Guide
+Best Attractions
+Hotels in London
 ```
 
 ---
 
-## 3. Factual Claim Validation
+## Step 2 — Tavily Search
 
-### Step 1 — Extract claims
+The query is sent to Tavily.
 
-`ClaimExtractor` extracts factual statements from the webpage.
-
-Example:
+Example request
 
 ```text
-"Bali is an Indonesian island."
+Things to Do in London
+London Travel Guide
+Best Attractions
+Hotels in London
 ```
 
-### Step 2 — Search the claim
-
-`TavilySearchClient` searches the web for evidence.
+Example response
 
 ```text
-Claim
-  ↓
-Tavily
-  ↓
-Search Results
+Result 1
+
+Title:
+Visit London
+
+URL:
+https://visitlondon.com
+
+Snippet:
+London is the capital of England.
+Popular attractions include Tower Bridge,
+Buckingham Palace and the London Eye.
+
+
+Result 2
+
+Title:
+Britannica
+
+URL:
+https://britannica.com
+
+Snippet:
+London is one of the world's largest cities
+and is located in southeastern England.
 ```
 
-### Step 3 — Gemini evaluates the evidence
-
-Gemini receives:
+The evaluator converts these results into a readable text block called:
 
 ```text
-CLAIM
-+
-WEB EVIDENCE
-```
-
-and returns:
-
-```text
-verified
-unsupported
-uncertain
-```
-
-### Step 4 — Create issues
-
-```text
-verified
-    → no issue
-
-unsupported
-    → High severity issue
-
-uncertain
-    → Medium severity issue
+search_evidence
 ```
 
 ---
 
-## 4. Property Card Validation
+## Step 3 — Build the Prompt
 
-Property cards are extracted into `WebsiteContent.property_cards`.
-
-Example:
+Gemini receives three things together:
 
 ```text
-Page:
-New York City Travel Guide
+1. Webpage Content
 
-Card:
+2. External Search Evidence
+
+3. Instructions describing what to verify
+```
+
+Example
+
+```text
+PAGE TITLE
+
+Things to Do in London
+
+WEBPAGE CONTENT
+
+The Eiffel Tower is London's most famous attraction.
+
+SEARCH EVIDENCE
+
+Visit London
+
+Tower Bridge
+Buckingham Palace
+London Eye
+
+Britannica
+
+London is the capital of England.
+```
+
+---
+
+## Step 4 — Gemini Performs Reasoning
+
+Gemini compares:
+
+```text
+Webpage
+
+vs
+
+External Search Evidence
+```
+
+It determines whether the webpage facts are:
+
+- Verified
+- Unsupported
+- Uncertain
+
+It also generates:
+
+- Issues
+- Recommendations
+- Knowledge score
+
+Example output
+
+```text
+Score:
+82
+
+Verified Claims
+
+London is the capital of England.
+
+Unsupported Claims
+
+The Eiffel Tower is London's most famous attraction.
+
+Issues
+
+Incorrect attraction information.
+
+Recommendation
+
+Replace Eiffel Tower with a London attraction.
+```
+
+---
+
+# 5. Property Card Validation
+
+After the webpage content has been validated, every extracted property card is validated independently.
+
+Each card receives its own Gemini request.
+
+Flow
+
+```text
+Property Card
+      │
+      ▼
+Build Search Query
+      │
+      ▼
+Tavily Search
+      │
+      ▼
+Search Evidence
+      │
+      ▼
+Gemini
+      │
+      ▼
+valid
+
+or
+
+context_mismatch
+```
+
+---
+
+# 6. Property Card Example
+
+Suppose the webpage is:
+
+```text
+London Travel Guide
+```
+
+Property Card
+
+```text
 Luxury Paris Hotel
+
+City:
+Paris
+
+Country:
+France
+```
+
+Generated Tavily query
+
+```text
+Luxury Paris Hotel
+Paris
+France
+Hotel
+```
+
+Tavily returns
+
+```text
+Luxury Paris Hotel
+
 Paris, France
 ```
 
-The evaluator sends Gemini:
+Gemini now compares
 
 ```text
-Page title
-+
-Page headings
-+
-Page content context
-+
-Property card information
+Page Destination
+
+London
+
+vs
+
+Property Destination
+
+Paris
 ```
 
-Gemini returns:
+Gemini returns
 
 ```text
-valid
-```
+status
 
-or:
-
-```text
 context_mismatch
+
+reason
+
+The property belongs to Paris,
+which does not match the webpage destination.
 ```
 
-Example:
+The evaluator converts this into:
 
 ```text
-New York City page
-        +
-Jersey City property
-        ↓
-      valid
-```
+Issue
 
-```text
-New York City page
-        +
-Paris property
-        ↓
-context_mismatch
++
+
+Recommendation
 ```
 
 ---
 
-## 5. Coordination
+# 7. Concurrent Property Card Validation
 
-The main coordinator is:
+Property cards are validated **concurrently** using:
 
-```text
-evaluator/evaluators/knowledge_validation.py
+```python
+ThreadPoolExecutor
 ```
 
-`KnowledgeValidationEvaluator` coordinates:
+instead of validating them one by one.
+
+Flow
 
 ```text
-ClaimExtractor
-      ↓
-TavilySearchClient
-      ↓
-Gemini
-      ↓
-Claim result
-
 Property Cards
-      ↓
-Gemini
-      ↓
-Card result
-```
 
-Finally, both results are combined into:
+Card 1
+Card 2
+Card 3
+Card 4
+Card 5
+...
+Card N
 
-```text
+        │
+        ▼
+
+ThreadPoolExecutor
+
+        │
+        ├───────────────┐
+        │               │
+        ▼               ▼
+
+Worker 1          Worker 2
+
+Gemini            Gemini
+
+        │               │
+
+        ▼               ▼
+
+Worker 3          Worker 4
+
+Gemini            Gemini
+
+        │               │
+        └───────┬───────┘
+                ▼
+
+Collect Results
+
+                ▼
+
 KnowledgeValidationResult
 ```
 
----
-
-## 6. Output
-
-The module returns:
+Each worker performs:
 
 ```text
+Build Search Query
+
+↓
+
+Tavily Search
+
+↓
+
+Gemini Validation
+
+↓
+
+Return Result
+```
+
+independently.
+
+---
+
+# 8. Why Concurrency Improves Performance
+
+Each property card requires:
+
+- One Tavily request
+- One Gemini request
+
+Both operations spend most of their time waiting for remote servers to respond.
+
+Instead of waiting for one card to finish before starting the next one, multiple cards are processed simultaneously.
+
+---
+
+# 9. Performance Comparison
+
+Suppose:
+
+- 20 property cards
+- Each card takes approximately **10 seconds**
+  (Tavily + Gemini)
+
+## Without ThreadPoolExecutor
+
+Cards are processed sequentially.
+
+```text
+Card 1
+
+↓
+
+Card 2
+
+↓
+
+Card 3
+
+↓
+
+...
+
+↓
+
+Card 20
+```
+
+Total execution time
+
+```text
+20 × 10
+
+≈ 200 seconds
+```
+
+---
+
+## With ThreadPoolExecutor
+
+Suppose
+
+```python
+max_workers = 5
+```
+
+Five cards are processed simultaneously.
+
+Execution happens in batches.
+
+```text
+Batch 1
+
+Cards 1–5
+
+↓
+
+Batch 2
+
+Cards 6–10
+
+↓
+
+Batch 3
+
+Cards 11–15
+
+↓
+
+Batch 4
+
+Cards 16–20
+```
+
+Each batch requires roughly
+
+```text
+10 seconds
+```
+
+Total execution time
+
+```text
+4 × 10
+
+≈ 40 seconds
+```
+
+Performance improvement
+
+```text
+Without workers
+
+≈ 200 seconds
+
+With 5 workers
+
+≈ 40 seconds
+
+Around 80% reduction in execution time.
+```
+
+---
+
+# 10. Issue Generation
+
+Whenever Gemini returns
+
+```text
+context_mismatch
+```
+
+the evaluator creates
+
+```text
+Issue
+
++
+
+Recommendation
+```
+
+Example
+
+Issue
+
+```text
+Property Card Context Mismatch
+
+The property card
+
+"Luxury Paris Hotel"
+
+belongs to Paris, France,
+which does not match the webpage destination.
+```
+
+Recommendation
+
+```text
+Review the property card and
+replace or remove it if it does not
+belong to the webpage destination.
+```
+
+Each mismatched property card generates its own issue.
+
+---
+
+# 11. Final Score Calculation
+
+The final knowledge validation score consists of two stages.
+
+## Stage 1
+
+Gemini evaluates the webpage content.
+
+Example
+
+```text
+Knowledge Score
+
+90
+```
+
+---
+
+## Stage 2
+
+Each mismatched property card reduces the score.
+
+Current implementation
+
+```python
+final_score = max(
+    0,
+    gemini_score - (card_issues × 15)
+)
+```
+
+Example
+
+```text
+Gemini Score
+
+90
+
+↓
+
+2 Property Card Mismatches
+
+↓
+
+Penalty
+
+2 × 15
+
+↓
+
+Final Score
+
+60
+```
+
+The score is never allowed to become negative.
+
+---
+
+# 12. Final Output
+
+The evaluator returns
+
+```text
+KnowledgeValidationResult
+
 score
-issues
-recommendations
+
 verified_claims
+
 unsupported_claims
+
 uncertain_claims
+
+issues
+
+recommendations
 ```
 
-Example:
+Example
 
 ```text
-Knowledge Validation Score: 75
+Knowledge Validation Score
 
-Issues:
-- Unsupported Claim
-- Property Card Context Mismatch
+78
 
-Recommendations:
-- Verify the factual claim
-- Review the property card
+Verified Claims
+
+• London is the capital of England.
+
+• Tower Bridge is located in London.
+
+Unsupported Claims
+
+• Eiffel Tower is London's most famous attraction.
+
+Uncertain Claims
+
+• London receives exactly 25 million tourists every year.
+
+Issues
+
+• Incorrect attraction information.
+
+• Property Card Context Mismatch.
+
+Recommendations
+
+• Correct the unsupported factual claim.
+
+• Replace or remove the incorrect property card.
 ```
 
 ---
 
+# 13. Summary
 
-## 7. Important Boundary
+The Knowledge Validation module:
 
-Knowledge Validation checks **factual correctness and contextual correctness**.
-
-It does **not** check:
-
-* Keyword density
-* SEO
-* Readability
-* Search intent
-* AI-sounding writing
-* HTML quality
+- Extracts contextual information from the webpage.
+- Uses Tavily Search to retrieve reliable external evidence.
+- Passes both the webpage content and search evidence to Gemini.
+- Gemini verifies factual claims using the supplied evidence.
+- Every property card is validated independently.
+- Property card validation runs concurrently using `ThreadPoolExecutor`.
+- Concurrency significantly reduces total evaluation time when many property cards exist.
+- The final result combines the LLM-generated knowledge score with penalties for property card mismatches to produce a single `KnowledgeValidationResult`.

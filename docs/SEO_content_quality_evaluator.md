@@ -1,458 +1,151 @@
-# SEO Quality Evaluator — Documentation
+# SEO Quality Evaluator
 
-Rule-based evaluator that scores a webpage's on-page SEO quality. Starts at a
-base score of **100** and deducts penalties for each issue found.
+This evaluator looks at a webpage and checks how well it follows common SEO best practices. It starts every page at a score of 100 and takes points away each time it finds a problem. The score never drops below 0.
 
-## Scoring Model
+## How Scoring Works
 
-* **High severity** → `-15` points
-* **Medium severity** → `-8` points
-* **Low severity** → `-3` points
-* Final score is floored at **0** (never negative)
+Every issue found has a severity level, and each severity costs a different number of points.
 
----
+A High severity issue costs 15 points.
+A Medium severity issue costs 8 points.
+A Low severity issue costs 3 points.
 
-## Checks Performed
+Unlike the technical HTML evaluator, this one deducts points per individual issue rather than per category, so a page with many small problems can lose a lot of points even if each one is minor.
 
-### 1. Title Check (`_check_title`)
+## What It Checks
 
-Evaluates the `<title>` tag length.
+### Title Length
 
-* **Missing** → title is empty/blank
+The evaluator looks at how long the page title is.
 
-  * Issue: `Missing SEO Title`
-  * Severity: **High**
-* **Too Short** → title length `< 30` characters
+If there is no title at all, that is a High severity issue called Missing SEO Title.
 
-  * Issue: `Title Too Short`
-  * Severity: **Medium**
-* **Too Long** → title length `> 60` characters
+If the title is shorter than 30 characters, that is a Medium severity issue called Title Too Short.
 
-  * Issue: `Title Too Long`
-  * Severity: **Medium**
-* **Valid range:** `30–60` characters → no issue
+If the title is longer than 60 characters, that is a Medium severity issue called Title Too Long.
 
----
+A title between 30 and 60 characters is considered fine and raises no issue.
 
-### 2. Meta Description Check (`_check_meta_description`)
+### Meta Description Length
 
-Evaluates the meta description length.
+The same idea applies to the meta description, just with different numbers.
 
-* **Missing** → meta description is empty/blank
+If it is missing entirely, that is a High severity issue called Missing Meta Description.
 
-  * Issue: `Missing Meta Description`
-  * Severity: **High**
-* **Too Short** → length `< 120` characters
+If it is shorter than 120 characters, that is a Medium severity issue called Meta Description Too Short.
 
-  * Issue: `Meta Description Too Short`
-  * Severity: **Medium**
-* **Too Long** → length `> 160` characters
+If it is longer than 160 characters, that is a Medium severity issue called Meta Description Too Long.
 
-  * Issue: `Meta Description Too Long`
-  * Severity: **Medium**
-* **Valid range:** `120–160` characters → no issue
+Anything between 120 and 160 characters is considered fine.
 
----
+### Content Length
 
-### 3. Content Length Check (`_check_content_length`)
+This check counts the total number of words on the page.
 
-Evaluates total word count of `plain_text`.
+Fewer than 300 words is treated as Thin Content and is a High severity issue.
 
-* **Thin Content** → `< 300` words
+Between 300 and 599 words is Low Content Coverage, a Medium severity issue.
 
-  * Severity: **High**
-* **Low Content Coverage** → `300–599` words
+Between 600 and 2500 words is considered a healthy range and raises no issue.
 
-  * Severity: **Medium**
-* **Good range** → `600–2500` words
+Between 2501 and 4000 words is flagged as Very Long Content, a Low severity issue, mainly as a nudge to keep the content organized.
 
-  * No issue
-* **Very Long Content** → `2501–4000` words
+Anything above 4000 words is flagged as Excessively Long Content, a Medium severity issue, since very long pages can overwhelm readers.
 
-  * Severity: **Low**
-* **Excessively Long Content** → `> 4000` words
+### Paragraph Length
 
-  * Severity: **Medium**
+The evaluator looks at each paragraph individually and counts how many go over 180 words. If even one paragraph is that long, it raises a single Low severity issue called Long Paragraphs, and the description tells you how many paragraphs were too long.
 
----
+### Internal Links
 
-### 4. Paragraph Length Check (`_check_paragraph_length`)
+Internal links are links whose href starts with a forward slash, meaning they point somewhere else on the same site. The evaluator expects roughly one internal link for every 500 words of content, with at least one expected no matter how short the page is.
 
-Evaluates each individual paragraph in `content.paragraphs`.
+If the page has fewer internal links than expected, it raises a Low severity issue called Low Internal Linking.
 
-* Counts paragraphs where word count `> 180` words
-* If **one or more** long paragraphs found:
+Worth noting, this check only recognizes links written as relative paths like /about. A link written as a full URL to the same site, like https://yoursite.com/about, would not be counted as internal here.
 
-  * Issue: `Long Paragraphs`
-  * Severity: **Low**
-  * Description reports how many paragraphs exceeded the limit
+### External Links
 
----
+External links are links whose href starts with http. If a page has more than 25 of them, that is flagged as a Low severity issue called Too Many External Links. There is no lower limit, so having zero external links is perfectly fine.
 
-### 5. Internal Link Distribution (`_check_internal_link_distribution`)
+Since this check simply looks for hrefs starting with http, a full URL pointing back to the same site would technically be counted as external too, even though it isn't really leaving the page.
 
-Evaluates ratio of internal links (`href` starting with `/`) to word count.
+### Images Versus Content
 
-* **Expected internal links** = `max(1, word_count // 500)`
+The evaluator expects roughly one image for every 800 words of content, again with at least one expected regardless of length. If the page has fewer images than that, it raises a Low severity issue called Low Image Coverage.
 
-  * i.e., at least 1 internal link expected per ~500 words
-* If actual internal link count `< expected`:
+### Duplicate Headings
 
-  * Issue: `Low Internal Linking`
-  * Severity: **Low**
+All headings from h1 through h6 are combined into one list. If any heading text shows up more than once anywhere in that combined list, the evaluator raises a single Low severity issue called Duplicate Headings. It does not list every duplicate individually, just flags that duplicates exist.
 
----
+### Generic Headings
 
-### 6. External Link Distribution (`_check_external_link_distribution`)
+The evaluator also checks headings against a small list of overly generic words such as home, about, page, section, article, content, welcome, and services. If a heading matches one of these words exactly after removing extra spaces and ignoring capitalization, it is flagged. This raises a Low severity issue called Generic Headings, and the description lists exactly which generic headings were found.
 
-Evaluates count of external links (`href` starting with `http`).
+### Readability
 
-* **Too Many External Links** → `> 25` external links
+To estimate readability, the evaluator splits the page text into sentences using periods, exclamation points, and question marks as breakpoints. It then divides the total word count by the number of sentences to get an average sentence length.
 
-  * Severity: **Low**
-* No lower-bound check (having zero external links is fine)
+If that average comes out above 25 words per sentence, it raises a Low severity issue called Low Readability. If the page has no sentences at all, this check is simply skipped.
 
----
+### Keyword Coverage
 
-### 7. Image-to-Content Ratio (`_check_image_content_ratio`)
+This part works a bit differently from the others because it depends on what the user originally asked for when the page was generated.
 
-Evaluates image count relative to word count.
+The evaluator takes the original user prompt and sends it to the language model, asking it to pull out the important topics the page should cover. Things like destination names, attractions, accommodation types, or explicit phrases the prompt mentioned. Generic instruction words like create, generate, or optimize are filtered out on purpose so they don't get treated as topics. If the prompt is empty, or if the extraction call fails for any reason, the evaluator simply treats the page as having no target keywords and skips these checks quietly.
 
-* **Expected images** = `max(1, word_count // 800)`
+Once it has a list of keywords, up to 20 of them, it checks each one against the title, the meta description, the h1 headings, the h2 headings, the h3 headings, and the full body text.
 
-  * i.e., at least 1 image expected per ~800 words
-* If actual image count `< expected`:
+If a keyword does not appear anywhere at all across any of those places, it goes into a Medium severity issue called Missing Target Topics, and the description lists every missing keyword together.
 
-  * Issue: `Low Image Coverage`
-  * Severity: **Low**
+If a keyword only shows up in the body text but never in the title, meta description, or any heading, it is considered weakly placed. These go into a separate Low severity issue called Weak Keyword Placement.
 
----
+### Keyword Density
 
-### 8. Duplicate Headings (`_check_duplicate_headings`)
+For each keyword that does appear on the page, the evaluator also measures how often it shows up relative to the total word count, expressed as a percentage. This calculation is case insensitive and works for multi word phrases as well as single words.
 
-Checks all headings (`h1`–`h6` combined) for duplicate text.
+If a keyword's density comes out below 0.5 percent, it is added to a Low severity issue called Low Target Keyword Coverage.
 
-* If any heading string appears **more than once** across all levels:
+If a keyword's density comes out above 2 percent, it is added to a Medium severity issue called Potential Keyword Overuse.
 
-  * Issue: `Duplicate Headings`
-  * Severity: **Low**
-* Only reports **one** issue total, regardless of how many duplicates exist
+Anything between those two numbers is considered a healthy, natural amount of usage and raises no issue.
 
----
+As an example, if a page has 300 words total and a keyword appears 3 times, that works out to 1 percent density, which falls comfortably in the healthy range. If that same keyword appeared 15 times instead, the density would be 5 percent, which is well above the 2 percent threshold and would trigger the overuse issue.
 
-### 9. Generic Headings (`_check_generic_headings`)
-
-Checks all headings (`h1`–`h6` combined) against a blocklist of generic terms.
-
-**Blocklisted terms** (case-insensitive, exact match after stripping):
-
-* `home`
-
-* `about`
-
-* `page`
-
-* `section`
-
-* `article`
-
-* `content`
-
-* `welcome`
-
-* `services`
-
-* If any heading matches a blocklisted term:
-
-  * Issue: `Generic Headings`
-  * Severity: **Low**
-  * Description lists the specific generic headings found
-
----
-
-### 10. Readability Check (`_check_readability`)
-
-Estimates average sentence length (a simplified readability proxy).
-
-* Splits `plain_text` into sentences using `.`, `!`, `?` as delimiters
-* Calculates: `avg = total_word_count / total_sentence_count`
-* If `avg > 25` words per sentence:
-
-  * Issue: `Low Readability`
-  * Severity: **Low**
-* If there are no sentences at all, check is skipped (no issue raised)
-
----
-
-### 11. Keyword Relevance, Placement, and Density
-
-The SEO evaluator checks whether important keywords derived from the
-**user prompt** are represented appropriately in the webpage.
-
-Keywords are expected to represent the topic the webpage was requested to
-cover.
-
-#### Keyword Sources
-
-The evaluator can receive keywords in two ways:
-
-1. **User prompt**
-
-   * The evaluator extracts relevant keyword candidates from the user's prompt.
-   * Example:
-
-```text
-User prompt:
-"Create a travel webpage about Bali beaches and Bali hotels."
-```
-
-Possible extracted keywords include:
-
-```text
-bali
-bali beaches
-bali hotels
-```
-
-2. **Explicit target keywords**
-
-   * The evaluator can also receive `target_keywords` directly.
-   * This is useful when the application already has a known keyword list.
-
-The evaluator should prefer the explicitly supplied keywords when available,
-and otherwise derive keyword candidates from the user prompt.
-
----
-
-#### Keyword Placement
-
-After obtaining the target keywords, the evaluator checks whether they appear
-in important SEO locations:
-
-* Page title
-* Meta description
-* H1 headings
-* H2 headings
-* H3 headings
-* Main page content
-
-A keyword appearing only in the body but not in important metadata or headings
-may receive a `Weak Keyword Placement` issue.
-
-The purpose is to determine whether the webpage's SEO elements reflect the
-topic requested by the user.
-
----
-
-#### Missing Target Keyword
-
-If an important target keyword does not appear anywhere in the relevant
-webpage content, the evaluator reports:
-
-```text
-Missing Target Keyword
-```
-
-The issue indicates that the webpage may not adequately reflect the requested
-topic.
-
----
-
-#### Keyword Density
-
-For each target keyword, the evaluator calculates:
-
-```text
-keyword density =
-(keyword occurrences / total word count) × 100
-```
-
-Keyword matching is **case-insensitive**.
-
-For example:
-
-```text
-Bali
-bali
-BALI
-```
-
-are treated as the same keyword.
-
-The evaluator also supports multi-word keywords such as:
-
-```text
-bali beaches
-bali hotels
-travel guide
-```
-
----
-
-#### Density Thresholds
-
-The current implementation uses the following heuristic thresholds:
-
-* **Below 0.5%**
-
-  * Issue: `Low Keyword Density`
-  * Severity: **Low**
-
-* **0.5%–2.0%**
-
-  * No density issue
-
-* **Above 2.0%**
-
-  * Issue: `High Keyword Density`
-  * Severity: **Medium**
-
-These thresholds are **heuristic SEO evaluation thresholds**, not direct
-Google ranking rules.
-
-The evaluator should therefore treat keyword density as one signal among
-multiple SEO-quality signals rather than assuming that a particular density
-guarantees better Google rankings.
-
----
-
-#### Keyword Density Example
-
-Suppose the page contains approximately 300 words and the target keyword
-appears 3 times:
-
-```text
-3 / 300 × 100 = 1%
-```
-
-The density is within the acceptable range:
-
-```text
-0.5% ≤ 1% ≤ 2.0%
-```
-
-Therefore, no keyword-density issue is generated.
-
-If the keyword appears 15 times:
-
-```text
-15 / 300 × 100 = 5%
-```
-
-The density exceeds the current threshold:
-
-```text
-5% > 2.0%
-```
-
-Therefore:
-
-```text
-High Keyword Density
-```
-
-is generated.
-
----
-
-#### Important Architectural Point
-
-Keyword density should **not be evaluated independently of keyword relevance**.
-
-The intended flow is:
-
-```text
-User Prompt
-     ↓
-Keyword Extraction
-     ↓
-Target Keywords
-     ↓
-┌─────────────────────────────────────┐
-│        Webpage Evaluation           │
-│                                     │
-│ Title                               │
-│ Meta Description                    │
-│ H1 / H2 / H3                        │
-│ Paragraphs / Main Content           │
-│                                     │
-│ → Keyword Presence                  │
-│ → Keyword Placement                 │
-│ → Keyword Density                   │
-└─────────────────────────────────────┘
-     ↓
-SEO Quality Issues
-     ↓
-SEO Quality Score
-```
-
-This means the system is checking:
-
-> **"Does the webpage use the important terms associated with what the user
-> asked for, and are those terms used naturally?"**
-
-It is not simply checking whether a webpage contains a large number of
-repeated words.
-
----
-
-
-
-
-
-### Notes
-
-* Keyword extraction from the user prompt determines what the webpage is
-  expected to discuss.
-* The webpage itself is then checked against those target keywords.
-* Title, meta description, H1, H2, H3, and body content are relevant keyword
-  locations.
-* Keyword matching is case-insensitive.
-* Multi-word keywords are supported.
-* Keyword density is calculated from the webpage's total word count.
-* Keyword density thresholds are heuristic thresholds, not official Google
-  ranking requirements.
-* Keyword density alone should never determine whether content is
-  SEO-friendly.
-
----
+These thresholds are simply heuristics built into this evaluator. They are not official Google ranking rules, and keyword density should be treated as just one small signal among many, not something to optimize for on its own.
 
 ## Summary Table
 
-| Check                            | Issue Title                | Severity | Threshold / Condition             |
-| -------------------------------- | -------------------------- | -------- | --------------------------------- |
-| Title                            | Missing SEO Title          | High     | title is empty                    |
-| Title                            | Title Too Short            | Medium   | `< 30` chars                      |
-| Title                            | Title Too Long             | Medium   | `> 60` chars                      |
-| Meta Description                 | Missing Meta Description   | High     | description is empty              |
-| Meta Description                 | Meta Description Too Short | Medium   | `< 120` chars                     |
-| Meta Description                 | Meta Description Too Long  | Medium   | `> 160` chars                     |
-| Content Length                   | Thin Content               | High     | `< 300` words                     |
-| Content Length                   | Low Content Coverage       | Medium   | `300–599` words                   |
-| Content Length                   | Very Long Content          | Low      | `2501–4000` words                 |
-| Content Length                   | Excessively Long Content   | Medium   | `> 4000` words                    |
-| Paragraph Length                 | Long Paragraphs            | Low      | any paragraph `> 180` words       |
-| Internal Links                   | Low Internal Linking       | Low      | fewer than `1 per 500 words`      |
-| External Links                   | Too Many External Links    | Low      | `> 25` external links             |
-| Images                           | Low Image Coverage         | Low      | fewer than `1 per 800 words`      |
-| Headings                         | Duplicate Headings         | Low      | any heading repeated across h1–h6 |
-| Headings                         | Generic Headings           | Low      | heading matches blocklist term    |
-| Readability                      | Low Readability            | Low      | avg sentence length `> 25` words  |
-| Keyword presence  | `Missing Target Keyword` | Medium   | Target keyword does not appear in relevant page content |
-| Keyword placement | `Weak Keyword Placement` | Low      | Keyword appears in body but not important SEO locations |
-| Keyword density   | `Low Keyword Density`    | Low      | Density `< 0.5%`                                        |
-| Keyword density   | No issue                 | —        | Density `0.5%–2.0%`                                     |
-| Keyword density   | `High Keyword Density`   | Medium   | Density `> 2.0%`                                        |
+| Check | Issue Title | Severity | Condition |
+|---|---|---|---|
+| Title | Missing SEO Title | High | title is empty |
+| Title | Title Too Short | Medium | fewer than 30 characters |
+| Title | Title Too Long | Medium | more than 60 characters |
+| Meta Description | Missing Meta Description | High | description is empty |
+| Meta Description | Meta Description Too Short | Medium | fewer than 120 characters |
+| Meta Description | Meta Description Too Long | Medium | more than 160 characters |
+| Content Length | Thin Content | High | fewer than 300 words |
+| Content Length | Low Content Coverage | Medium | 300 to 599 words |
+| Content Length | Very Long Content | Low | 2501 to 4000 words |
+| Content Length | Excessively Long Content | Medium | more than 4000 words |
+| Paragraph Length | Long Paragraphs | Low | any paragraph over 180 words |
+| Internal Links | Low Internal Linking | Low | fewer than about 1 per 500 words |
+| External Links | Too Many External Links | Low | more than 25 external links |
+| Images | Low Image Coverage | Low | fewer than about 1 per 800 words |
+| Headings | Duplicate Headings | Low | any heading repeated across h1 to h6 |
+| Headings | Generic Headings | Low | heading matches the blocklist |
+| Readability | Low Readability | Low | average sentence length over 25 words |
+| Keyword Presence | Missing Target Topics | Medium | keyword not found anywhere relevant |
+| Keyword Placement | Weak Keyword Placement | Low | keyword only found in body text |
+| Keyword Density | Low Target Keyword Coverage | Low | density below 0.5 percent |
+| Keyword Density | Potential Keyword Overuse | Medium | density above 2 percent |
 
+## Things Worth Knowing
 
----
+The internal link check only recognizes links that start with a forward slash, so an internal link written as a full absolute URL to the same domain would be missed.
 
-## Notes / Potential Improvements
+The external link check only looks for links starting with http, so an absolute link pointing back to the same site would be miscounted as external.
 
-* **Internal link detection** (`href.startswith("/")`) assumes relative URLs
-  only — it would miss internal links written as full absolute URLs
-  (e.g., `https://samesite.com/about`).
-* **External link detection** (`href.startswith("http")`) would also catch
-  absolute internal links (e.g., `https://samesite.com/about`), incorrectly
-  counting them as external.
+Keyword extraction depends entirely on the user prompt and the language model's interpretation of it. If the prompt is vague, empty, or the extraction call fails, the page simply won't be checked against any target topics, and no keyword related issues will appear.
 
+Keyword density is only calculated for keywords that already appear on the page at least once. A keyword that is completely missing shows up under Missing Target Topics instead, not under a zero percent density issue.
