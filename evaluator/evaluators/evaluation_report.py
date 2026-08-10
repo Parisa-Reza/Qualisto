@@ -66,3 +66,90 @@ class EvaluationReport:
             issues=issues,
             recommendations=recommendations,
         )
+
+    def to_dict(self) -> dict:
+        """
+        Convert the unified evaluation report into a JSON-serializable
+        dictionary for the Django API.
+        """
+
+        def result_to_dict(
+            result: EvaluationResult,
+        ) -> dict:
+            return {
+                "score": result.score,
+                "issues": [
+                    {
+                        "severity": issue.severity,
+                        "title": issue.title,
+                        "description": issue.description,
+                    }
+                    for issue in result.issues
+                ],
+                "recommendations": [
+                    {
+                        "title": recommendation.title,
+                        "description": recommendation.description,
+                    }
+                    for recommendation in result.recommendations
+                ],
+            }
+
+        return {
+            "overall_score": self.final_score,
+
+            "scores": {
+                "prompt_alignment": (
+                    self.prompt_alignment.score
+                ),
+                "knowledge_validation": (
+                    self.knowledge_validation.score
+                ),
+                "seo_quality": (
+                    self.seo_quality.score
+                ),
+                "search_quality": (
+                    self.search_quality.score
+                ),
+                "technical_html": (
+                    self.technical_html.score
+                ),
+            },
+
+            "issues": [
+                {
+                    "severity": issue.severity,
+                    "title": issue.title,
+                    "description": issue.description,
+                }
+                for issue in self.issues
+            ],
+
+            "recommendations": [
+                {
+                    "title": recommendation.title,
+                    "description": recommendation.description,
+                }
+                for recommendation in self.recommendations
+            ],
+
+            # Keep individual evaluator details available
+            # for future report/UI expansion.
+            "evaluations": {
+                "prompt_alignment": result_to_dict(
+                    self.prompt_alignment
+                ),
+                "knowledge_validation": result_to_dict(
+                    self.knowledge_validation
+                ),
+                "seo_quality": result_to_dict(
+                    self.seo_quality
+                ),
+                "search_quality": result_to_dict(
+                    self.search_quality
+                ),
+                "technical_html": result_to_dict(
+                    self.technical_html
+                ),
+            },
+        }

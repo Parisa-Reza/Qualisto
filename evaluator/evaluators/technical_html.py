@@ -1,290 +1,266 @@
+import logging
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
+
 import requests
 
 from evaluator.extractor.schemas import WebsiteContent
-from evaluator.evaluators.schemas import (
-    EvaluationResult,
-    Issue,
-    Recommendation,
-)
+from evaluator.evaluators.schemas import EvaluationResult, Issue, Recommendation
+
+logger = logging.getLogger(__name__)
 
 
 class TechnicalHTMLEvaluator:
     """
     Evaluates the technical HTML quality of a webpage.
+
+    Issues are reported individually with specific context.
+    Scoring is calculated by category so repeated issues do not
+    unfairly destroy the overall technical HTML score.
     """
+
+    MAX_WORKERS = 10
+    REQUEST_TIMEOUT = 5
+    HEADERS = {"User-Agent": "Mozilla/5.0"}
+    SNIPPET_LIMIT = 160
+
+    PENALTIES = {
+        "structure": 20,
+        "metadata": 15,
+        "links": 25,
+        "images": 20,
+        "accessibility": 10,
+        "html": 10,
+    }
 
     @classmethod
     def evaluate(cls, content: WebsiteContent) -> EvaluationResult:
+        logger.info("Technical HTML evaluation started | url=%s", content.url)
 
         issues = []
         recommendations = []
+        categories = {}
 
-        cls._check_title(
-            content,
-            issues,
-            recommendations,
+        cls._run_check("structure", cls._check_structure, content, issues, recommendations, categories)
+        cls._run_check("metadata", cls._check_metadata, content, issues, recommendations, categories)
+        cls._run_check("links", cls._check_links, content, issues, recommendations, categories)
+        cls._run_check("images", cls._check_images, content, issues, recommendations, categories)
+        cls._run_check("accessibility", cls._check_accessibility, content, issues, recommendations, categories)
+        cls._run_check("html", cls._check_html, content, issues, recommendations, categories)
+
+        score = cls._calculate_score(categories)
+
+        logger.info(
+            "Technical HTML evaluation completed | score=%d | issues=%d | recommendations=%d",
+            score, len(issues), len(recommendations),
         )
 
-        cls._check_meta_description(
-            content,
-            issues,
-            recommendations,
-        )
+        return EvaluationResult(score=score, issues=issues, recommendations=recommendations)
 
-        cls._check_duplicate_h1(
-            content,
-            issues,
-            recommendations,
-        )
+    # ============================================================
+    # CHECK RUNNER
+    # ============================================================
 
-        cls._check_empty_links(
-            content,
-            issues,
-            recommendations,
-        )
+    @classmethod
+    def _run_check(cls, category, check, content, issues, recommendations, categories):
+        category_issues = []
+        category_recommendations = []
 
-        cls._check_missing_image_alt(
-            content,
-            issues,
-            recommendations,
-        )
+        logger.info("Running technical HTML check | category=%s", category)
 
-        cls._check_missing_image_src(
-            content,
-            issues,
-            recommendations,
-        )
+        check(content, category_issues, category_recommendations)
 
-        cls._check_invalid_heading_order(
-            content,
-            issues,
-            recommendations,
-        )
+        issues.extend(category_issues)
+        recommendations.extend(category_recommendations)
 
-        cls._check_duplicate_ids(
-            content,
-            issues,
-            recommendations,
-        )
+        categories[category] = category_issues
 
-        cls._check_missing_html_attributes(
-            content,
-            issues,
-            recommendations,
-        )
+        logger.info("Technical HTML check completed | category=%s | issues=%d", category, len(category_issues))
 
-        cls._check_basic_html_validation(
-            content,
-            issues,
-            recommendations,
-        )
-
-        cls._check_broken_links(
-            content,
-            issues,
-            recommendations,
-        )
-
-        cls._check_broken_images(
-            content,
-            issues,
-            recommendations,
-        )
-
-        score = cls._calculate_score(issues)
-
-        return EvaluationResult(
-            score=score,
-            issues=issues,
-            recommendations=recommendations,
-        )
+    # ============================================================
+    # LOCATION HELPERS
+    # ============================================================
 
     @staticmethod
-    def _check_title(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _locate(tag):
+        """
+        Build a short, pinpointable location for a tag.
 
-        if content.title:
-            return
+        The breadcrumb is anchored at the nearest ancestor that has an
+        id (searching outward from the tag itself), since an id is a
+        unique, greppable landmark in the page source. This keeps the
+        path short instead of always starting from <html>. If no id is
+        found anywhere up the tree, the full path from <html> is used.
 
-        issues.append(
-            Issue(
-                severity="High",
-                title="Missing HTML Title",
-                description="The webpage does not contain a title tag.",
-            )
-        )
+        Examples:
+          h3#about_heading (line 912)
+          div#icon_property_search_t4osm_0 > h1.property-search-title (line 159)
+        """
+        chain = []
+        node = tag
 
-        recommendations.append(
-            Recommendation(
-                title="Add HTML Title",
-                description="Add a descriptive and unique HTML title.",
-            )
-        )
+        while node is not None and getattr(node, "name", None) not in (None, "[document]"):
+            selector = node.name
+            has_id = bool(node.get("id"))
 
-    @staticmethod
-    def _check_meta_description(
-        content,
-        issues,
-        recommendations,
-    ):
-
-        if content.meta_description:
-            return
-
-        issues.append(
-            Issue(
-                severity="Medium",
-                title="Missing Meta Description",
-                description="No meta description was found.",
-            )
-        )
-
-        recommendations.append(
-            Recommendation(
-                title="Add Meta Description",
-                description="Provide a meaningful meta description.",
-            )
-        )
-
-    @staticmethod
-    def _check_duplicate_h1(
-        content,
-        issues,
-        recommendations,
-    ):
-
-        if len(content.headings.h1) <= 1:
-            return
-
-        issues.append(
-            Issue(
-                severity="Medium",
-                title="Multiple H1 Tags",
-                description="A webpage should contain only one H1 heading.",
-            )
-        )
-
-        recommendations.append(
-            Recommendation(
-                title="Keep One H1",
-                description="Use a single H1 and move others to H2 or H3.",
-            )
-        )
-
-    @staticmethod
-    def _check_empty_links(
-        content,
-        issues,
-        recommendations,
-    ):
-
-        for link in content.links:
-
-            if link.text.strip():
-                continue
-
-            issues.append(
-                Issue(
-                    severity="Low",
-                    title="Empty Anchor Text",
-                    description=f"Link '{link.href}' has no visible text.",
+            if has_id:
+                selector += f"#{node['id']}"
+            elif node.get("class"):
+                selector += "." + ".".join(node.get("class"))
+            else:
+                parent = node.parent
+                siblings = (
+                    parent.find_all(node.name, recursive=False)
+                    if parent is not None
+                    else []
                 )
-            )
+                if len(siblings) > 1:
+                    position = siblings.index(node) + 1
+                    selector += f":nth-of-type({position})"
 
-            recommendations.append(
-                Recommendation(
-                    title="Add Anchor Text",
-                    description="Provide descriptive anchor text for links.",
-                )
-            )
+            chain.append((selector, has_id))
+            node = node.parent
 
-    @staticmethod
-    def _check_missing_image_alt(
-        content,
-        issues,
-        recommendations,
-    ):
+        cutoff = len(chain)
+        for i, (_, has_id) in enumerate(chain):
+            if has_id:
+                cutoff = i + 1
+                break
 
-        for image in content.images:
+        path = " > ".join(selector for selector, _ in reversed(chain[:cutoff]))
+        line = getattr(tag, "sourceline", None)
 
-            if image.alt.strip():
-                continue
+        return f"{path} (line {line})" if line else path
 
-            issues.append(
-                Issue(
-                    severity="Medium",
-                    title="Missing Image ALT",
-                    description=f"Image '{image.src}' has no ALT text.",
-                )
-            )
+    @classmethod
+    def _snippet(cls, tag):
+        """
+        Return a truncated outer-HTML snippet so a developer can search
+        for the exact element in the page source.
+        """
+        html = str(tag)
 
-            recommendations.append(
-                Recommendation(
-                    title="Add ALT Text",
-                    description="Every image should have meaningful ALT text.",
-                )
-            )
+        if len(html) > cls.SNIPPET_LIMIT:
+            html = html[: cls.SNIPPET_LIMIT].rstrip() + "..."
+
+        return html
 
     @staticmethod
-    def _check_missing_image_src(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _describe(summary, *, location=None, previous=None, html=None):
+        """
+        Compose a clean, multi-line issue description: a short summary
+        sentence followed by labeled context lines, one per line.
+        """
+        lines = [summary]
 
-        for image in content.images:
+        if previous:
+            lines.append(f"Previous Heading: {previous}")
+        if location:
+            lines.append(f"Location: {location}")
+        if html:
+            lines.append(f"HTML: {html}")
 
-            if image.src.strip():
+        return "\n".join(lines)
+
+    # ============================================================
+    # STRUCTURE
+    # ============================================================
+
+    @staticmethod
+    def _check_structure(content, issues, recommendations):
+        TechnicalHTMLEvaluator._check_basic_html_structure(content, issues, recommendations)
+        TechnicalHTMLEvaluator._check_duplicate_h1(content, issues, recommendations)
+        TechnicalHTMLEvaluator._check_heading_order(content, issues, recommendations)
+        TechnicalHTMLEvaluator._check_duplicate_ids(content, issues, recommendations)
+
+    @staticmethod
+    def _check_basic_html_structure(content, issues, recommendations):
+        required_tags = ("html", "head", "body")
+
+        for tag_name in required_tags:
+            if content.soup.find(tag_name):
                 continue
 
             issues.append(
                 Issue(
                     severity="High",
-                    title="Missing Image Source",
-                    description="An image tag is missing the src attribute.",
+                    title="Missing HTML Structure",
+                    description=f"The page is missing the required <{tag_name}> element.",
                 )
             )
 
             recommendations.append(
                 Recommendation(
-                    title="Provide Image Source",
-                    description="Every image must specify a valid src.",
+                    title="Fix HTML Structure",
+                    description=f"Add the missing <{tag_name}> element to the page structure.",
                 )
             )
-            
+
     @staticmethod
-    def _check_invalid_heading_order(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _check_duplicate_h1(content, issues, recommendations):
+        h1_tags = content.soup.find_all("h1")
 
-        heading_sequence = []
+        if len(h1_tags) <= 1:
+            return
 
-        for tag in content.soup.find_all(
-            ["h1", "h2", "h3", "h4", "h5", "h6"]
-        ):
+        for tag in h1_tags[1:]:
+            text = tag.get_text(" ", strip=True)
+            location = TechnicalHTMLEvaluator._locate(tag)
+            snippet = TechnicalHTMLEvaluator._snippet(tag)
 
+            issues.append(
+                Issue(
+                    severity="Medium",
+                    title="Multiple H1 Tags",
+                    description=TechnicalHTMLEvaluator._describe(
+                        f"An additional H1 '{text or '[empty H1]'}' was found on the page.",
+                        location=location,
+                        html=snippet,
+                    ),
+                )
+            )
+
+            recommendations.append(
+                Recommendation(
+                    title="Reduce Multiple H1 Tags",
+                    description=(
+                        f"The H1 '{text or '[empty H1]'}' at {location} is an additional H1 on the page. "
+                        f"Keep one primary H1 and convert this heading to an appropriate H2 or H3 if it "
+                        f"represents a subsection."
+                    ),
+                )
+            )
+
+    @staticmethod
+    def _check_heading_order(content, issues, recommendations):
+        headings = content.soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+
+        previous_level = None
+        previous_text = ""
+        previous_location = ""
+
+        for tag in headings:
             level = int(tag.name[1])
-            heading_sequence.append(level)
+            text = tag.get_text(" ", strip=True)
+            location = TechnicalHTMLEvaluator._locate(tag)
 
-        previous_level = 0
-
-        for level in heading_sequence:
-
-            if previous_level and level > previous_level + 1:
+            if previous_level is not None and level > previous_level + 1:
+                snippet = TechnicalHTMLEvaluator._snippet(tag)
+                previous_label = (
+                    f"'{previous_text or '[empty heading]'}' (H{previous_level}) at {previous_location}"
+                )
 
                 issues.append(
                     Issue(
                         severity="Medium",
                         title="Invalid Heading Order",
-                        description=(
-                            f"Heading level jumps from "
-                            f"H{previous_level} to H{level}."
+                        description=TechnicalHTMLEvaluator._describe(
+                            f"Heading '{text or '[empty heading]'}' is H{level}, which skips ahead from "
+                            f"H{previous_level} instead of stepping down one level at a time.",
+                            location=location,
+                            previous=previous_label,
+                            html=snippet,
                         ),
                     )
                 )
@@ -293,153 +269,184 @@ class TechnicalHTMLEvaluator:
                     Recommendation(
                         title="Fix Heading Hierarchy",
                         description=(
-                            "Use sequential heading levels "
-                            "(H1 → H2 → H3)."
+                            f"Change '{text or '[empty heading]'}' at {location} from H{level} to an "
+                            f"appropriate heading level so the hierarchy does not skip from H{previous_level} "
+                            f"to H{level}."
                         ),
                     )
                 )
 
-                return
-
             previous_level = level
+            previous_text = text
+            previous_location = location
 
     @staticmethod
-    def _check_duplicate_ids(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _check_duplicate_ids(content, issues, recommendations):
+        tags_with_id = content.soup.find_all(id=True)
+        counts = Counter(tag.get("id", "").strip() for tag in tags_with_id)
 
-        ids = []
+        for tag in tags_with_id:
+            html_id = tag.get("id", "").strip()
+            count = counts.get(html_id, 0)
 
-        for tag in content.soup.find_all(id=True):
-            ids.append(tag["id"])
+            if not html_id or count <= 1:
+                continue
 
-        duplicates = {
-            html_id
-            for html_id in ids
-            if ids.count(html_id) > 1
-        }
-
-        for html_id in duplicates:
+            location = TechnicalHTMLEvaluator._locate(tag)
+            snippet = TechnicalHTMLEvaluator._snippet(tag)
 
             issues.append(
                 Issue(
                     severity="Medium",
                     title="Duplicate HTML ID",
-                    description=(
-                        f"Duplicate id '{html_id}' found."
+                    description=TechnicalHTMLEvaluator._describe(
+                        f"The HTML id '{html_id}' appears {count} times on the page.",
+                        location=location,
+                        html=snippet,
                     ),
                 )
             )
 
             recommendations.append(
                 Recommendation(
-                    title="Use Unique IDs",
+                    title="Make HTML IDs Unique",
                     description=(
-                        "Every HTML id attribute should "
-                        "be unique."
+                        f"Rename or remove the duplicate id='{html_id}' found at {location}. "
+                        f"Each HTML id should identify only one element on the page."
                     ),
                 )
             )
 
+    # ============================================================
+    # METADATA
+    # ============================================================
+
     @staticmethod
-    def _check_missing_html_attributes(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _check_metadata(content, issues, recommendations):
+        TechnicalHTMLEvaluator._check_title(content, issues, recommendations)
+        TechnicalHTMLEvaluator._check_meta_description(content, issues, recommendations)
 
-        for tag in content.soup.find_all("a"):
-
-            if not tag.get("href"):
-
-                issues.append(
-                    Issue(
-                        severity="High",
-                        title="Missing href Attribute",
-                        description="Anchor tag missing href.",
-                    )
-                )
-
-                recommendations.append(
-                    Recommendation(
-                        title="Add href",
-                        description="Every anchor should contain a valid href.",
-                    )
-                )
-
-        for tag in content.soup.find_all("img"):
-
-            if not tag.get("src"):
-
-                issues.append(
-                    Issue(
-                        severity="High",
-                        title="Missing src Attribute",
-                        description="Image missing src attribute.",
-                    )
-                )
-
-                recommendations.append(
-                    Recommendation(
-                        title="Add Image Source",
-                        description="Every image should specify a src.",
-                    )
-                )
-    
     @staticmethod
-    def _check_basic_html_validation(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _check_title(content, issues, recommendations):
+        title = (content.title or "").strip()
 
-        required_tags = [
-            "html",
-            "head",
-            "body",
-        ]
+        if title:
+            return
 
-        for tag_name in required_tags:
+        issues.append(
+            Issue(
+                severity="High",
+                title="Missing HTML Title",
+                description=f"No <title> element was found for page '{content.url}'.",
+            )
+        )
 
-            if content.soup.find(tag_name):
+        recommendations.append(
+            Recommendation(
+                title="Add HTML Title",
+                description=f"Add a descriptive and unique <title> element for the page '{content.url}'.",
+            )
+        )
+
+    @staticmethod
+    def _check_meta_description(content, issues, recommendations):
+        description = (content.meta_description or "").strip()
+
+        if description:
+            return
+
+        issues.append(
+            Issue(
+                severity="Medium",
+                title="Missing Meta Description",
+                description=f"No meta description was found for '{content.url}'.",
+            )
+        )
+
+        recommendations.append(
+            Recommendation(
+                title="Add Meta Description",
+                description=f"Add a meaningful meta description describing the content of '{content.url}'.",
+            )
+        )
+
+    # ============================================================
+    # LINKS
+    # ============================================================
+
+    @classmethod
+    def _check_links(cls, content, issues, recommendations):
+        cls._check_empty_links(content, issues, recommendations)
+        cls._check_missing_href(content, issues, recommendations)
+        cls._check_broken_links(content, issues, recommendations)
+
+    @staticmethod
+    def _check_empty_links(content, issues, recommendations):
+        for link in content.links:
+            text = (link.text or "").strip()
+            href = (link.href or "").strip()
+
+            if text:
                 continue
 
             issues.append(
                 Issue(
-                    severity="High",
-                    title="Invalid HTML Structure",
-                    description=f"Missing <{tag_name}> tag.",
+                    severity="Low",
+                    title="Empty Anchor Text",
+                    description=f"An anchor has empty visible text. href='{href or '[missing href]'}'.",
                 )
             )
 
             recommendations.append(
                 Recommendation(
-                    title="Fix HTML Structure",
+                    title="Add Descriptive Anchor Text",
                     description=(
-                        f"Add the missing <{tag_name}> element."
+                        f"Add visible, descriptive anchor text to the link with href='{href or '[missing href]'}' "
+                        f"so users and search engines can understand the link destination."
                     ),
                 )
             )
-    
 
     @staticmethod
-    def _check_broken_links(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _check_missing_href(content, issues, recommendations):
+        for tag in content.soup.find_all("a"):
+            href = tag.get("href")
+            text = tag.get_text(" ", strip=True)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-        }
+            if href:
+                continue
 
-        timeout = 5
+            location = TechnicalHTMLEvaluator._locate(tag)
+            snippet = TechnicalHTMLEvaluator._snippet(tag)
+
+            issues.append(
+                Issue(
+                    severity="High",
+                    title="Missing href Attribute",
+                    description=TechnicalHTMLEvaluator._describe(
+                        f"An anchor with text '{text or '[empty]'}' is missing the href attribute.",
+                        location=location,
+                        html=snippet,
+                    ),
+                )
+            )
+
+            recommendations.append(
+                Recommendation(
+                    title="Add href to Anchor",
+                    description=(
+                        f"Add a valid href to the anchor '{text or '[empty]'}' at {location}. "
+                        f"The href should point to the intended destination."
+                    ),
+                )
+            )
+
+    @classmethod
+    def _check_broken_links(cls, content, issues, recommendations):
+        links = []
 
         for link in content.links:
-
-            href = link.href.strip()
+            href = (link.href or "").strip()
 
             if not href:
                 continue
@@ -447,29 +454,58 @@ class TechnicalHTMLEvaluator:
             if href.startswith(("#", "mailto:", "tel:", "javascript:")):
                 continue
 
-            absolute_url = urljoin(
-                content.url,
-                href,
-            )
+            links.append((link, urljoin(content.url, href)))
 
-            try:
+        if not links:
+            return
 
-                response = requests.head(
-                    absolute_url,
-                    allow_redirects=True,
-                    timeout=timeout,
-                    headers=headers,
-                )
+        logger.info("Checking links concurrently | count=%d | workers=%d", len(links), min(cls.MAX_WORKERS, len(links)))
 
-                if response.status_code >= 400:
+        with ThreadPoolExecutor(max_workers=min(cls.MAX_WORKERS, len(links))) as executor:
+            futures = {
+                executor.submit(cls._request_url, absolute_url): (link, absolute_url)
+                for link, absolute_url in links
+            }
 
+            for future in as_completed(futures):
+                link, absolute_url = futures[future]
+
+                try:
+                    status = future.result()
+                except Exception:
+                    logger.exception("Unexpected link validation error | url=%s", absolute_url)
+                    continue
+
+                if status is None:
+                    issues.append(
+                        Issue(
+                            severity="High",
+                            title="Inaccessible Link",
+                            description=(
+                                f"Link text '{link.text or '[empty]'}' points to '{absolute_url}', "
+                                f"but the destination could not be reached."
+                            ),
+                        )
+                    )
+
+                    recommendations.append(
+                        Recommendation(
+                            title="Fix Inaccessible Link",
+                            description=(
+                                f"Review the link '{absolute_url}' used by anchor text '{link.text or '[empty]'}'. "
+                                f"Update it to a reachable URL or remove the link if the destination no longer exists."
+                            ),
+                        )
+                    )
+
+                elif status >= 400:
                     issues.append(
                         Issue(
                             severity="High",
                             title="Broken Link",
                             description=(
-                                f"'{absolute_url}' returned "
-                                f"{response.status_code}."
+                                f"Link text '{link.text or '[empty]'}' points to '{absolute_url}', "
+                                f"which returned HTTP status {status}."
                             ),
                         )
                     )
@@ -478,122 +514,264 @@ class TechnicalHTMLEvaluator:
                         Recommendation(
                             title="Fix Broken Link",
                             description=(
-                                "Update or remove broken hyperlinks."
+                                f"Review the link used by '{link.text or '[empty]'}': '{absolute_url}'. "
+                                f"It returned HTTP {status}. Replace it with a valid destination or remove it."
                             ),
                         )
                     )
 
-            except requests.RequestException:
+    # ============================================================
+    # IMAGES
+    # ============================================================
 
-                issues.append(
-                    Issue(
-                        severity="High",
-                        title="Broken Link",
-                        description=(
-                            f"Unable to access '{absolute_url}'."
-                        ),
-                    )
-                )
+    @classmethod
+    def _check_images(cls, content, issues, recommendations):
+        cls._check_missing_image_alt(content, issues, recommendations)
+        cls._check_missing_image_src(content, issues, recommendations)
+        cls._check_broken_images(content, issues, recommendations)
 
-                recommendations.append(
-                    Recommendation(
-                        title="Fix Broken Link",
-                        description=(
-                            "Ensure hyperlinks are reachable."
-                        ),
-                    )
-                )
-    
-    
     @staticmethod
-    def _check_broken_images(
-        content,
-        issues,
-        recommendations,
-    ):
+    def _check_missing_image_alt(content, issues, recommendations):
+        for tag in content.soup.find_all("img"):
+            src = (tag.get("src") or "").strip()
+            alt = (tag.get("alt") or "").strip()
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-        }
+            if alt:
+                continue
 
-        timeout = 5
+            location = TechnicalHTMLEvaluator._locate(tag)
+            snippet = TechnicalHTMLEvaluator._snippet(tag)
+
+            issues.append(
+                Issue(
+                    severity="Medium",
+                    title="Missing Image ALT",
+                    description=TechnicalHTMLEvaluator._describe(
+                        f"An image is missing ALT text. Image source: '{src or '[missing src]'}'.",
+                        location=location,
+                        html=snippet,
+                    ),
+                )
+            )
+
+            recommendations.append(
+                Recommendation(
+                    title="Add Image ALT Text",
+                    description=(
+                        f"Add meaningful ALT text to the image ('{src or '[missing src]'}') at {location}, "
+                        f"describing the image's purpose or content."
+                    ),
+                )
+            )
+
+    @staticmethod
+    def _check_missing_image_src(content, issues, recommendations):
+        for tag in content.soup.find_all("img"):
+            src = tag.get("src")
+            alt = (tag.get("alt") or "").strip()
+
+            if src:
+                continue
+
+            location = TechnicalHTMLEvaluator._locate(tag)
+            snippet = TechnicalHTMLEvaluator._snippet(tag)
+
+            issues.append(
+                Issue(
+                    severity="High",
+                    title="Missing Image Source",
+                    description=TechnicalHTMLEvaluator._describe(
+                        f"An image is missing the src attribute. ALT text: '{alt or '[empty]'}'.",
+                        location=location,
+                        html=snippet,
+                    ),
+                )
+            )
+
+            recommendations.append(
+                Recommendation(
+                    title="Add Image Source",
+                    description=(
+                        f"Add a valid src attribute to the image at {location} (ALT text: '{alt or '[empty]'}')."
+                    ),
+                )
+            )
+
+    @classmethod
+    def _check_broken_images(cls, content, issues, recommendations):
+        images = []
 
         for image in content.images:
-
-            src = image.src.strip()
+            src = (image.src or "").strip()
 
             if not src:
                 continue
 
-            absolute_url = urljoin(
-                content.url,
-                src,
-            )
+            images.append((image, urljoin(content.url, src)))
 
-            try:
+        if not images:
+            return
 
-                response = requests.head(
-                    absolute_url,
-                    allow_redirects=True,
-                    timeout=timeout,
-                    headers=headers,
-                )
+        logger.info("Checking images concurrently | count=%d | workers=%d", len(images), min(cls.MAX_WORKERS, len(images)))
 
-                if response.status_code >= 400:
+        with ThreadPoolExecutor(max_workers=min(cls.MAX_WORKERS, len(images))) as executor:
+            futures = {
+                executor.submit(cls._request_url, absolute_url): (image, absolute_url)
+                for image, absolute_url in images
+            }
 
+            for future in as_completed(futures):
+                image, absolute_url = futures[future]
+
+                try:
+                    status = future.result()
+                except Exception:
+                    logger.exception("Unexpected image validation error | url=%s", absolute_url)
+                    continue
+
+                if status is None:
+                    issues.append(
+                        Issue(
+                            severity="Medium",
+                            title="Inaccessible Image",
+                            description=f"Image '{absolute_url}' could not be reached.",
+                        )
+                    )
+
+                    recommendations.append(
+                        Recommendation(
+                            title="Fix Inaccessible Image",
+                            description=(
+                                f"Verify that image source '{absolute_url}' exists and is accessible. "
+                                f"Replace the source if the image is no longer available."
+                            ),
+                        )
+                    )
+
+                elif status >= 400:
                     issues.append(
                         Issue(
                             severity="Medium",
                             title="Broken Image",
-                            description=(
-                                f"'{absolute_url}' returned "
-                                f"{response.status_code}."
-                            ),
+                            description=f"Image source '{absolute_url}' returned HTTP status {status}.",
                         )
                     )
 
                     recommendations.append(
                         Recommendation(
                             title="Fix Broken Image",
-                            description=(
-                                "Replace or repair broken image sources."
-                            ),
+                            description=f"Replace or repair the image source '{absolute_url}', which returned HTTP {status}.",
                         )
                     )
 
-            except requests.RequestException:
-
-                issues.append(
-                    Issue(
-                        severity="Medium",
-                        title="Broken Image",
-                        description=(
-                            f"Unable to access '{absolute_url}'."
-                        ),
-                    )
-                )
-
-                recommendations.append(
-                    Recommendation(
-                        title="Fix Broken Image",
-                        description=(
-                            "Verify image URLs are accessible."
-                        ),
-                    )
-                )
+    # ============================================================
+    # ACCESSIBILITY
+    # ============================================================
 
     @staticmethod
-    def _calculate_score(issues):
+    def _check_accessibility(content, issues, recommendations):
+        for tag in content.soup.find_all("img"):
+            alt = tag.get("alt")
 
+            if alt is not None:
+                continue
+
+            src = tag.get("src", "")
+            location = TechnicalHTMLEvaluator._locate(tag)
+            snippet = TechnicalHTMLEvaluator._snippet(tag)
+
+            issues.append(
+                Issue(
+                    severity="Medium",
+                    title="Missing Image Accessibility Attribute",
+                    description=TechnicalHTMLEvaluator._describe(
+                        f"An image with source '{src or '[missing src]'}' does not contain an ALT attribute.",
+                        location=location,
+                        html=snippet,
+                    ),
+                )
+            )
+
+            recommendations.append(
+                Recommendation(
+                    title="Add ALT Attribute",
+                    description=f"Add an ALT attribute to the image ('{src or '[missing src]'}') at {location}.",
+                )
+            )
+
+    # ============================================================
+    # HTML ATTRIBUTES / VALIDATION
+    # ============================================================
+
+    @staticmethod
+    def _check_html(content, issues, recommendations):
+        for tag in content.soup.find_all("a"):
+            if tag.get("href"):
+                continue
+
+            text = tag.get_text(" ", strip=True)
+            location = TechnicalHTMLEvaluator._locate(tag)
+            snippet = TechnicalHTMLEvaluator._snippet(tag)
+
+            issues.append(
+                Issue(
+                    severity="High",
+                    title="Invalid Anchor Element",
+                    description=TechnicalHTMLEvaluator._describe(
+                        f"An anchor with text '{text or '[empty]'}' has no href.",
+                        location=location,
+                        html=snippet,
+                    ),
+                )
+            )
+
+            recommendations.append(
+                Recommendation(
+                    title="Complete Anchor Element",
+                    description=f"Add a valid href to the anchor '{text or '[empty]'}' at {location}.",
+                )
+            )
+
+    # ============================================================
+    # HTTP
+    # ============================================================
+
+    @classmethod
+    def _request_url(cls, url):
+        try:
+            response = requests.head(url, allow_redirects=True, timeout=cls.REQUEST_TIMEOUT, headers=cls.HEADERS)
+
+            if response.status_code in (405, 403):
+                response = requests.get(url, allow_redirects=True, timeout=cls.REQUEST_TIMEOUT, headers=cls.HEADERS, stream=True)
+
+            logger.info("URL checked | url=%s | status=%d", url, response.status_code)
+
+            return response.status_code
+
+        except requests.RequestException:
+            logger.warning("URL could not be reached | url=%s", url)
+            return None
+
+    # ============================================================
+    # SCORING
+    # ============================================================
+
+    @classmethod
+    def _calculate_score(cls, categories):
         score = 100
 
-        penalties = {
-            "High": 15,
-            "Medium": 8,
-            "Low": 3,
-        }
+        for category, penalty in cls.PENALTIES.items():
+            category_issues = categories.get(category, [])
 
-        for issue in issues:
-            score -= penalties.get(issue.severity, 0)
+            if not category_issues:
+                continue
+
+            score -= penalty
+
+            logger.info(
+                "Category penalty applied | category=%s | penalty=%d | issues=%d",
+                category, penalty, len(category_issues),
+            )
 
         return max(score, 0)
+

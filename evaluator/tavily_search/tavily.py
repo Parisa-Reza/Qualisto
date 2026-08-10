@@ -18,8 +18,15 @@ class TavilySearchClient:
 
     def search(self, query: str, max_results: int = 5) -> list[dict]:
 
-        if not query.strip():
+        query = query.strip()
+
+        if not query:
             return []
+
+        # Tavily accepts queries of at most 400 characters. Claims extracted
+        # from page content can be longer, so keep the request within its API
+        # limit instead of failing the entire evaluation.
+        query = query[:400]
 
         response = self.client.search(
             query=query,

@@ -73,7 +73,7 @@ class SearchQualityEvaluatorTest(SimpleTestCase):
         result = evaluator.evaluate(self.create_content())
 
         self.assertEqual(len(result.issues), 1)
-        self.assertEqual(result.issues[0].title, "Search Quality Issue")
+        self.assertEqual(result.issues[0].title, "Search Quality")
         self.assertEqual(result.issues[0].severity, "Low")
 
     def test_recommendations_are_converted(self):

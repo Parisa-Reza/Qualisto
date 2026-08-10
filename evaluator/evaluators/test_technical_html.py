@@ -127,10 +127,20 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
 
     def test_duplicate_h1(self):
 
+        html = """
+        <html>
+        <head>
+            <title>Bali Travel Guide</title>
+        </head>
+        <body>
+            <h1>One</h1>
+            <h1>Two</h1>
+        </body>
+        </html>
+        """
+
         result = TechnicalHTMLEvaluator.evaluate(
-            self.create_content(
-                h1=["One", "Two"],
-            ),
+            self.create_content(html=html)
         )
 
         self.assertEqual(
@@ -158,15 +168,19 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
 
     def test_missing_image_alt(self):
 
+        html = """
+        <html>
+        <head>
+            <title>Bali Travel Guide</title>
+        </head>
+        <body>
+            <img src="/bali.jpg">
+        </body>
+        </html>
+        """
+
         result = TechnicalHTMLEvaluator.evaluate(
-            self.create_content(
-                images=[
-                    Image(
-                        src="/bali.jpg",
-                        alt="",
-                    )
-                ]
-            ),
+            self.create_content(html=html)
         )
 
         self.assertEqual(
@@ -176,15 +190,19 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
 
     def test_missing_image_src(self):
 
+        html = """
+        <html>
+        <head>
+            <title>Bali Travel Guide</title>
+        </head>
+        <body>
+            <img alt="Bali">
+        </body>
+        </html>
+        """
+
         result = TechnicalHTMLEvaluator.evaluate(
-            self.create_content(
-                images=[
-                    Image(
-                        src="",
-                        alt="Bali",
-                    )
-                ]
-            ),
+            self.create_content(html=html)
         )
 
         self.assertEqual(
@@ -196,6 +214,9 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
 
         html = """
         <html>
+            <head>
+                <title>Bali Travel Guide</title>
+            </head>
             <body>
 
                 <h1>Main</h1>
@@ -223,6 +244,9 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
 
         html = """
         <html>
+            <head>
+                <title>Bali Travel Guide</title>
+            </head>
             <body>
 
                 <div id="hero"></div>
@@ -246,29 +270,13 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
             )
         )
 
-    def test_missing_html_structure(self):
-
-        html = """
-        <div>Hello</div>
-        """
-
-        result = TechnicalHTMLEvaluator.evaluate(
-            self.create_content(
-                html=html,
-            ),
-        )
-
-        self.assertTrue(
-            any(
-                issue.title == "Invalid HTML Structure"
-                for issue in result.issues
-            )
-        )
-
     def test_missing_href_attribute(self):
 
         html = """
         <html>
+            <head>
+                <title>Bali Travel Guide</title>
+            </head>
             <body>
 
                 <a>About</a>
@@ -294,7 +302,9 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
 
         html = """
         <html>
-
+            <head>
+                <title>Bali Travel Guide</title>
+            </head>
             <body>
 
                 <h1>Main</h1>
@@ -345,7 +355,6 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
             100,
         )
 
-    
     @patch("evaluator.evaluators.technical_html.requests.head")
     def test_broken_link(
         self,

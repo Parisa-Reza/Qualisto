@@ -1,91 +1,453 @@
+import logging
+from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from pydantic import BaseModel, Field
-from evaluator.claim_extractor.claim_extractor import ClaimExtractor
+
 from evaluator.extractor.schemas import WebsiteContent
-from evaluator.evaluators.schemas import EvaluationResult, Issue, KnowledgeValidationResult, Recommendation
+from evaluator.evaluators.schemas import (
+    Issue,
+    KnowledgeValidationResult,
+    Recommendation,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class ClaimValidationLLMResult(BaseModel):
-    status: str = Field(description="verified, unsupported, or uncertain")
-    reason: str
+    status: str = Field(
+        description="verified, unsupported, or uncertain"
+    )
+    claim: str = ""
+    evidence: str = ""
+    location: str = ""
+    explanation: str = ""
+
 
 class PropertyCardValidationLLMResult(BaseModel):
-    status: str = Field(description="valid or context_mismatch")
-    reason: str
+    status: str = Field(
+        description="valid or context_mismatch"
+    )
+    reason: str = ""
+
+
+class KnowledgeValidationLLMResult(BaseModel):
+    score: int = Field(ge=0, le=100)
+    verified_claims: list[str] = Field(default_factory=list)
+    unsupported_claims: list[str] = Field(default_factory=list)
+    uncertain_claims: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
 
 
 class KnowledgeValidationEvaluator:
-    def __init__(self, llm, search_client):
+
+    def __init__(
+        self,
+        llm,
+        search_client,
+        max_workers: int = 8,
+    ):
         self.llm = llm
         self.search_client = search_client
+        self.max_workers = max_workers
 
-    def evaluate(self, content: WebsiteContent) -> KnowledgeValidationResult:
-        claims = ClaimExtractor.extract(content.plain_text)
-        verified_claims = []
-        unsupported_claims = []
-        uncertain_claims = []
-        issues = []
-        recommendations = []
+        logger.info(
+            "KnowledgeValidationEvaluator initialized | "
+            "llm=%s | search_client=%s | max_workers=%d",
+            type(llm).__name__,
+            type(search_client).__name__,
+            max_workers,
+        )
 
-   
-        for claim in claims:
-            evidence = self.search_client.search(claim, max_results=5)
-            result = self._validate_claim(claim, evidence)
+    def evaluate(
+        self,
+        content: WebsiteContent,
+    ) -> KnowledgeValidationResult:
+        logger.info("Knowledge validation evaluation started.")
 
-            if result.status == "verified":
-                verified_claims.append(claim)
-            elif result.status == "unsupported":
-                unsupported_claims.append(claim)
-                issues.append(Issue(severity="High", title="Unsupported Claim", description=f"{claim} Reason: {result.reason}"))
-                recommendations.append(Recommendation(title="Verify Factual Claim", description=f"Review and verify this claim: {claim}"))
-            else:
-                uncertain_claims.append(claim)
-                issues.append(Issue(severity="Medium", title="Uncertain Claim", description=f"{claim} Reason: {result.reason}"))
-                recommendations.append(Recommendation(title="Review Uncertain Claim", description=f"Check reliable sources for: {claim}"))
+        result = self._analyze(content)
 
-      
-        card_issues, card_recommendations = self._validate_property_cards(content)
+        issues = [
+            Issue(
+                severity=self._issue_severity(result.score),
+                title="Knowledge Validation",
+                description=issue,
+            )
+            for issue in result.issues
+        ]
+
+        recommendations = [
+            Recommendation(
+                title="Fix Knowledge Issue",
+                description=recommendation,
+            )
+            for recommendation in result.recommendations
+        ]
+
+        card_issues, card_recommendations = (
+            self._validate_property_cards(content)
+        )
+
         issues.extend(card_issues)
         recommendations.extend(card_recommendations)
 
-        score = self._calculate_score(len(claims), len(unsupported_claims), len(uncertain_claims))
+        score = max(
+            0,
+            result.score - len(card_issues) * 15,
+        )
 
-        
-        score = max(0, score - (len(card_issues) * 15))
+        logger.info(
+            "Knowledge validation completed | "
+            "base_score=%d | card_issues=%d | final_score=%d",
+            result.score,
+            len(card_issues),
+            score,
+        )
 
-        return KnowledgeValidationResult(score=score, issues=issues, recommendations=recommendations, verified_claims=verified_claims, unsupported_claims=unsupported_claims, uncertain_claims=uncertain_claims)
+        return KnowledgeValidationResult(
+            score=score,
+            issues=issues,
+            recommendations=recommendations,
+            verified_claims=result.verified_claims,
+            unsupported_claims=result.unsupported_claims,
+            uncertain_claims=result.uncertain_claims,
+        )
 
-    def _validate_claim(self, claim: str, evidence: list[dict]) -> ClaimValidationLLMResult:
-        structured_llm = self.llm.with_structured_output(ClaimValidationLLMResult)
-        return structured_llm.invoke(self._build_prompt(claim, evidence))
 
-    # NEW: validate every extracted property card.
-    def _validate_property_cards(self, content: WebsiteContent):
-        issues = []
-        recommendations = []
+    # GENERAL KNOWLEDGE VALIDATION
 
-        for card in content.property_cards:
-            result = self._validate_property_card(content, card)
 
-            if result.status == "context_mismatch":
-                issues.append(Issue(severity="High", title="Property Card Context Mismatch", description=(f"Property '{card.title}' is located in {card.location}. {result.reason}")))
-                recommendations.append(Recommendation(title="Review Property Card", description=(f"Remove or replace '{card.title}' because its location does not match the webpage destination.")))
+    def _analyze(
+        self,
+        content: WebsiteContent,
+    ) -> KnowledgeValidationLLMResult:
+        logger.info("Calling LLM for knowledge validation.")
+        logger.info("Collecting Tavily evidence...")
+
+        search_evidence = self._collect_search_evidence(content)
+
+        logger.info(
+            "Collected %d characters of search evidence.",
+            len(search_evidence),
+        )
+
+        structured_llm = self.llm.with_structured_output(
+            KnowledgeValidationLLMResult
+        )
+
+        try:
+            result = structured_llm.invoke(
+                self._build_prompt(
+                    content,
+                    search_evidence=search_evidence,
+                )
+            )
+        except Exception:
+            logger.exception(
+                "Knowledge validation LLM call failed."
+            )
+            raise
+
+        logger.info("Knowledge validation LLM call successful.")
+
+        return result
+
+   
+    # PARALLEL PROPERTY CARD VALIDATION
+
+
+    def _validate_property_cards(
+        self,
+        content: WebsiteContent,
+    ) -> tuple[list[Issue], list[Recommendation]]:
+        property_cards = getattr(
+            content,
+            "property_cards",
+            [],
+        )
+
+        logger.info(
+            "Property card validation started | cards=%d | workers=%d",
+            len(property_cards),
+            self.max_workers,
+        )
+
+        if not property_cards:
+            return [], []
+
+        issues: list[Issue] = []
+        recommendations: list[Recommendation] = []
+
+        with ThreadPoolExecutor(
+            max_workers=self.max_workers
+        ) as executor:
+
+            futures = {
+                executor.submit(
+                    self._validate_single_property_card,
+                    content,
+                    card,
+                ): card
+                for card in property_cards
+            }
+
+            for future in as_completed(futures):
+                card = futures[future]
+
+                try:
+                    card_issue, card_recommendation = (
+                        future.result()
+                    )
+
+                except Exception:
+                    logger.exception(
+                        "Property card validation failed | "
+                        "title=%s",
+                        getattr(card, "title", ""),
+                    )
+                    continue
+
+                if card_issue:
+                    issues.append(card_issue)
+
+                if card_recommendation:
+                    recommendations.append(
+                        card_recommendation
+                    )
+
+        logger.info(
+            "Property card validation completed | "
+            "issues=%d | recommendations=%d",
+            len(issues),
+            len(recommendations),
+        )
 
         return issues, recommendations
 
-   
-    def _validate_property_card(self, content: WebsiteContent, card) -> PropertyCardValidationLLMResult:
-        structured_llm = self.llm.with_structured_output(PropertyCardValidationLLMResult)
-        return structured_llm.invoke(self._build_property_card_prompt(content, card))
+    def _validate_single_property_card(
+        self,
+        content: WebsiteContent,
+        card,
+    ) -> tuple[Issue | None, Recommendation | None]:
 
-  
+        title = getattr(
+            card,
+            "title",
+            "Unknown property",
+        )
+
+        location = getattr(
+            card,
+            "location",
+            "",
+        )
+
+        logger.info(
+            "Validating property card | title=%s | location=%s",
+            title,
+            location,
+        )
+
+        result = self._validate_property_card(
+            content,
+            card,
+        )
+
+        if result.status != "context_mismatch":
+            return None, None
+
+        reason = result.reason.strip()
+
+        description = (
+            f"The property card '{title}'"
+        )
+
+        if location:
+            description += (
+                f" is associated with {location}."
+            )
+
+        if reason:
+            description += f" {reason}"
+
+        issue = Issue(
+            severity="High",
+            title="Property Card Context Mismatch",
+            description=description,
+        )
+
+        recommendation = Recommendation(
+            title="Review Property Card",
+            description=(
+                f"Review the '{title}' property card "
+                f"and remove or replace it if it does not "
+                f"belong to the webpage's destination. "
+                f"The card location is '{location}'."
+            ),
+        )
+
+        logger.warning(
+            "Property card context mismatch | "
+            "title=%s | location=%s | reason=%s",
+            title,
+            location,
+            reason,
+        )
+
+        return issue, recommendation
+
+    def _validate_property_card(
+        self,
+        content: WebsiteContent,
+        card,
+    ) -> PropertyCardValidationLLMResult:
+
+        structured_llm = self.llm.with_structured_output(
+            PropertyCardValidationLLMResult
+        )
+
+        logger.info(
+            "Searching Tavily for property card: %s",
+            getattr(card, "title", ""),
+        )
+        search_evidence = self._collect_search_evidence(
+            content,
+            card=card,
+        )
+
+        return structured_llm.invoke(
+            self._build_property_card_prompt(
+                content,
+                card,
+                search_evidence=search_evidence,
+            )
+        )
+    def _collect_search_evidence(
+        self,
+        content: WebsiteContent,
+        card=None,
+    ) -> str:
+
+        if not self.search_client:
+            return ""
+
+        query = self._build_search_query(
+            content,
+            card,
+        )
+
+        if not query:
+            return ""
+
+        logger.info(
+            "Searching Tavily | query=%s",
+            query,
+        )
+
+        try:
+
+            results = self.search_client.search(
+                query=query,
+                max_results=5,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Tavily search failed."
+            )
+
+            return ""
+
+        if not results:
+            return ""
+
+        evidence = []
+
+        for index, result in enumerate(results, start=1):
+
+            title = result.get("title", "")
+            url = result.get("url", "")
+            snippet = result.get("content", "")
+
+            evidence.append(
+                f"""
+    Result {index}
+
+    Title:
+    {title}
+
+    URL:
+    {url}
+
+    Snippet:
+    {snippet}
+    """
+            )
+
+        return "\n".join(evidence)
     @staticmethod
-    def _build_property_card_prompt(content: WebsiteContent, card) -> str:
-        headings = []
-        for heading_list in (content.headings.h1, content.headings.h2, content.headings.h3):
-            headings.extend(heading_list)
+    def _build_search_query(
+        content: WebsiteContent,
+        card=None,
+    ) -> str:
+
+        if card:
+
+            return " ".join(
+                filter(
+                    None,
+                    [
+                        getattr(card, "title", ""),
+                        getattr(card, "city", ""),
+                        getattr(card, "country", ""),
+                        getattr(card, "property_type", ""),
+                    ],
+                )
+            )
+
+        parts = []
+
+        if content.title:
+            parts.append(content.title)
+
+        for heading_list in (
+            content.headings.h1,
+            content.headings.h2,
+            content.headings.h3,
+        ):
+            parts.extend(heading_list)
+
+        return " ".join(parts)[:400]
+    
+
+    # PROPERTY CARD PROMPT
+
+
+    @staticmethod
+    def _build_property_card_prompt(
+        content: WebsiteContent,
+        card,
+        search_evidence: str = "",
+    ) -> str:
+
+        headings = [
+            heading
+            for heading_list in (
+                content.headings.h1,
+                content.headings.h2,
+                content.headings.h3,
+                content.headings.h4,
+            )
+            for heading in heading_list
+        ]
 
         return f"""
-Determine whether this property card belongs on this webpage.
+You are validating ONE PROPERTY CARD on a travel webpage.
+
+Your ONLY task is to determine whether this property card belongs
+to the destination/context of the webpage.
 
 PAGE TITLE:
 {content.title}
@@ -93,80 +455,223 @@ PAGE TITLE:
 PAGE HEADINGS:
 {headings}
 
-PAGE CONTENT CONTEXT:
-{content.plain_text[:5000]}
+PROPERTY TITLE:
+{getattr(card, "title", "")}
 
-PROPERTY CARD:
-Title: {card.title}
-City: {card.city}
-Country: {card.country}
-Country Code: {card.country_code}
-Location: {card.location}
-Property Type: {card.property_type}
+CITY:
+{getattr(card, "city", "")}
 
-Check whether the property's location is consistent with
-the webpage's intended destination.
+COUNTRY:
+{getattr(card, "country", "")}
+
+COUNTRY CODE:
+{getattr(card, "country_code", "")}
+
+LOCATION:
+{getattr(card, "location", "")}
+
+PROPERTY TYPE:
+{getattr(card, "property_type", "")}
+
+PAGE CONTEXT:
+{content.plain_text[:6000]}
+
+SEARCH EVIDENCE:
+EXTERNAL SEARCH RESULTS (Tavily):
+
+{search_evidence or "No external evidence was retrieved.Do not assume the webpage is incorrect solely because evidence is unavailable."}
+
+Use these search results when verifying factual claims.
+
+Do NOT ignore them.
+
+If the webpage contradicts reliable external evidence,
+mark the claim as unsupported.
+
+If the evidence is inconclusive,
+mark the claim as uncertain.
+
+TASK:
+Determine whether the property card is contextually appropriate
+for this webpage.
+
+VALID:
+The property is reasonably relevant to the webpage destination.
+
+CONTEXT_MISMATCH:
+The property clearly belongs to a different destination.
+
+IMPORTANT DESTINATION MATCHING RULES
+
+The destination of the property card must match the primary destination
+of the webpage.
+
+If the webpage is about New York City,
+only properties physically located inside New York City
+(Manhattan, Brooklyn, Queens, Bronx, Staten Island)
+are considered valid.
+
+Properties located in Jersey City, Newark,
+Hoboken, Long Island, Connecticut,
+or any other nearby city are NOT considered part
+of New York City.
+
+Likewise:
+
+Paris != Versailles
+London != Oxford
+Tokyo != Yokohama
+
+Geographic proximity does NOT imply destination relevance.
+
+If the property belongs to another city,
+return:
+
+status=context_mismatch
 
 Examples:
 
-New York City page + Jersey City, USA:
-Usually valid because Jersey City is directly relevant
-to the New York City travel area.
+New York City page + New York City hotel = valid.
 
-New York City page + Paris, France:
-Context mismatch.
+New York City page + Jersey City hotel = context_mismatch.
 
-Rules:
-- Return "valid" when the property is reasonably relevant
-  to the page destination.
-- Return "context_mismatch" when it clearly belongs to
-  another destination.
-- Do not reject a property merely because it is in a
-  nearby city or metropolitan area.
-- Do not evaluate HTML quality.
-- Do not evaluate SEO.
-- Do not evaluate keyword density.
-- Do not invent facts.
+New York City page + Paris hotel = context_mismatch.
 
-Return the required structured result.
-"""
+London page + New York hotel = context_mismatch.
 
-    @staticmethod
-    def _build_prompt(claim: str, evidence: list[dict]) -> str:
-        sources = "\n\n".join((f"TITLE: {item.get('title', '')}\nURL: {item.get('url', '')}\nCONTENT: {item.get('content', '')}") for item in evidence)
-
-        return f"""
-Determine whether the following webpage claim is supported
-by the provided web evidence.
-
-CLAIM:
-{claim}
-
-WEB EVIDENCE:
-{sources}
-
-Return:
-
-status:
-- verified
-- unsupported
-- uncertain
-
-Use "verified" only when the evidence clearly supports
-the claim.
-
-Use "unsupported" when the evidence contradicts the claim
-or provides no credible support.
-
-Use "uncertain" when the evidence is insufficient or
-ambiguous.
+Do NOT evaluate:
+- HTML
+- SEO
+- keyword density
+- readability
+- writing quality
+- page design
 
 Do not invent facts.
+
+Return ONLY the structured result.
+
+status:
+- valid
+- context_mismatch
+
+reason:
+Give a short, concrete explanation.
+"""
+
+    
+    # GENERAL KNOWLEDGE PROMPT
+    
+
+    @staticmethod
+    def _build_prompt(
+        content: WebsiteContent,
+        search_evidence: str = "",
+    ) -> str:
+
+        headings = [
+            heading
+            for heading_list in (
+                content.headings.h1,
+                content.headings.h2,
+                content.headings.h3,
+                content.headings.h4,
+            )
+            for heading in heading_list
+        ]
+
+        return f"""
+You are a factual-content validator for an AI-generated travel webpage.
+
+Your ONLY responsibility is KNOWLEDGE VALIDATION.
+
+Check whether factual claims on the webpage are supported by reliable
+external information.
+
+PAGE TITLE:
+{content.title}
+
+HEADINGS:
+{headings}
+
+WEBPAGE CONTENT:
+{content.plain_text[:16000]}
+
+SEARCH EVIDENCE:
+EXTERNAL SEARCH RESULTS (Tavily):
+
+{search_evidence or "No external evidence was found."}
+
+Use these search results when verifying factual claims about destinations,
+attractions, accommodations, and travel information.
+
+CHECK FOR:
+
+1. Incorrect factual claims.
+2. Unsupported factual claims.
+3. Contradictory claims.
+4. Incorrect destination information.
+5. Incorrect attraction/location information.
+6. Incorrect travel information.
+7. Incorrect hotel/property information.
+8. Destination mismatches.
+
+Property cards are validated separately.
+
+Do NOT evaluate:
+- SEO
+- HTML
+- keyword density
+- readability
+- writing style
+- AI-generated writing style
+
+Every issue MUST identify where it appears.
+
+Use:
+- section heading
+- card title
+- paragraph context
+- heading
+- list item
+
+Do not write vague issues.
+
+SEARCH / VERIFICATION:
+
+Use external search evidence when factual verification is required.
+
+Do not claim something is false merely because evidence is unavailable.
+
+If evidence is insufficient, classify the claim as uncertain.
+
+SCORING:
+
+100:
+Claims are well-supported with no meaningful factual problems.
+
+80-99:
+Mostly accurate with minor unsupported or uncertain claims.
+
+60-79:
+Several claims require verification or contain questionable details.
+
+40-59:
+Significant factual problems exist.
+
+0-39:
+Major factual inaccuracies or destination mismatches exist.
+
+Return only concrete findings.
+Do not generate generic warnings.
+Return the required structured output.
 """
 
     @staticmethod
-    def _calculate_score(total_claims, unsupported, uncertain):
-        if total_claims == 0:
-            return 100
-        penalty = unsupported * 20 + uncertain * 10
-        return max(0, 100 - penalty)
+    def _issue_severity(score: int) -> str:
+        if score < 40:
+            return "High"
+        if score < 70:
+            return "Medium"
+        return "Low"
+

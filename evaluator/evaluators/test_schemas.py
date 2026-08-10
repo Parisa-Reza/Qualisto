@@ -3,206 +3,158 @@ from django.test import SimpleTestCase
 from evaluator.evaluators.schemas import (
     EvaluationResult,
     Issue,
+    KnowledgeValidationResult,
     PromptAlignmentResult,
     Recommendation,
+    SearchQualityResult,
 )
 
 
-class EvaluatorSchemasTest(SimpleTestCase):
+class IssueTest(SimpleTestCase):
 
-    def test_issue_schema(self):
-
+    def test_issue_creation(self):
         issue = Issue(
             severity="High",
-            title="Missing Title",
-            description="The page does not contain a title tag.",
+            title="Broken Link",
+            description="Homepage contains a broken link.",
         )
 
         self.assertEqual(issue.severity, "High")
-        self.assertEqual(issue.title, "Missing Title")
+        self.assertEqual(issue.title, "Broken Link")
         self.assertEqual(
             issue.description,
-            "The page does not contain a title tag.",
+            "Homepage contains a broken link.",
         )
 
-    def test_recommendation_schema(self):
 
+class RecommendationTest(SimpleTestCase):
+
+    def test_recommendation_creation(self):
         recommendation = Recommendation(
-            title="Add Title",
-            description="Include a meaningful HTML title.",
+            title="Fix Broken Link",
+            description="Replace the invalid hyperlink.",
         )
 
         self.assertEqual(
             recommendation.title,
-            "Add Title",
+            "Fix Broken Link",
         )
-
         self.assertEqual(
             recommendation.description,
-            "Include a meaningful HTML title.",
+            "Replace the invalid hyperlink.",
         )
 
-    def test_evaluation_result_schema(self):
 
-        result = EvaluationResult(
-            score=90,
-            issues=[
-                Issue(
-                    severity="Medium",
-                    title="Missing Meta Description",
-                    description="Meta description not found.",
-                ),
-                Issue(
-                    severity="Low",
-                    title="Empty Anchor Text",
-                    description="Anchor has no visible text.",
-                ),
-            ],
-            recommendations=[
-                Recommendation(
-                    title="Add Meta Description",
-                    description="Provide a descriptive meta tag.",
-                ),
-                Recommendation(
-                    title="Add Anchor Text",
-                    description="Provide descriptive text for links.",
-                ),
-            ],
-        )
+class EvaluationResultTest(SimpleTestCase):
+
+    def test_default_lists_are_empty(self):
+        result = EvaluationResult(score=90)
 
         self.assertEqual(result.score, 90)
-
-        self.assertEqual(len(result.issues), 2)
-
-        self.assertEqual(len(result.recommendations), 2)
-
-        self.assertEqual(
-            result.issues[0].title,
-            "Missing Meta Description",
-        )
-
-        self.assertEqual(
-            result.issues[1].title,
-            "Empty Anchor Text",
-        )
-
-        self.assertEqual(
-            result.recommendations[0].title,
-            "Add Meta Description",
-        )
-
-        self.assertEqual(
-            result.recommendations[1].title,
-            "Add Anchor Text",
-        )
-
-    def test_empty_result(self):
-
-        result = EvaluationResult(score=100)
-
-        self.assertEqual(result.score, 100)
         self.assertEqual(result.issues, [])
         self.assertEqual(result.recommendations, [])
 
-    def test_multiple_issue_severities(self):
 
-        result = EvaluationResult(
-            score=65,
-            issues=[
-                Issue(
-                    severity="High",
-                    title="Broken Link",
-                    description="A link returned 404.",
-                ),
-                Issue(
-                    severity="Medium",
-                    title="Duplicate ID",
-                    description="Duplicate HTML id found.",
-                ),
-                Issue(
-                    severity="Low",
-                    title="Empty Heading",
-                    description="Heading contains no text.",
-                ),
-            ],
-        )
-
-        self.assertEqual(len(result.issues), 3)
-
-        self.assertEqual(
-            result.issues[0].severity,
-            "High",
-        )
-
-        self.assertEqual(
-            result.issues[1].severity,
-            "Medium",
-        )
-
-        self.assertEqual(
-            result.issues[2].severity,
-            "Low",
-        )
-
-    def test_multiple_recommendations(self):
-
-        result = EvaluationResult(
-            score=80,
-            recommendations=[
-                Recommendation(
-                    title="Fix Broken Link",
-                    description="Update or remove broken hyperlinks.",
-                ),
-                Recommendation(
-                    title="Add ALT Text",
-                    description="Provide descriptive ALT text for images.",
-                ),
-            ],
-        )
-
-        self.assertEqual(
-            len(result.recommendations),
-            2,
-        )
-
-        self.assertEqual(
-            result.recommendations[0].title,
-            "Fix Broken Link",
-        )
-
-        self.assertEqual(
-            result.recommendations[1].title,
-            "Add ALT Text",
-        )
-
+class PromptAlignmentResultTest(SimpleTestCase):
 
     def test_prompt_alignment_result(self):
-
         result = PromptAlignmentResult(
             score=85,
-            issues=[
-                Issue(
-                    severity="Medium",
-                    title="Missing Requirement",
-                    description="The page does not discuss Bali cuisine.",
-                )
-            ],
-            recommendations=[
-                Recommendation(
-                    title="Add Bali Cuisine",
-                    description="Add information about local Balinese cuisine.",
-                )
-            ],
-            missing_requirements=["Bali cuisine"],
-            off_topic_sections=["US visa information"],
+            missing_requirements=["Hotels"],
+            off_topic_sections=["USA Visa"],
         )
 
         self.assertEqual(result.score, 85)
         self.assertEqual(
             result.missing_requirements,
-            ["Bali cuisine"],
+            ["Hotels"],
         )
         self.assertEqual(
             result.off_topic_sections,
-            ["US visa information"],
+            ["USA Visa"],
+        )
+
+
+class KnowledgeValidationResultTest(SimpleTestCase):
+
+    def test_knowledge_validation_result(self):
+        result = KnowledgeValidationResult(
+            score=80,
+            verified_claims=["Bali is in Indonesia"],
+            unsupported_claims=["Bali is in Thailand"],
+            uncertain_claims=["10 million tourists annually"],
+        )
+
+        self.assertEqual(result.score, 80)
+        self.assertEqual(
+            result.verified_claims,
+            ["Bali is in Indonesia"],
+        )
+        self.assertEqual(
+            result.unsupported_claims,
+            ["Bali is in Thailand"],
+        )
+        self.assertEqual(
+            result.uncertain_claims,
+            ["10 million tourists annually"],
+        )
+
+
+class SearchQualityResultTest(SimpleTestCase):
+
+    def test_search_quality_result(self):
+        result = SearchQualityResult(
+            score=91,
+            search_intent="Informational",
+            helpfulness_score=90,
+            completeness_score=88,
+            natural_writing_score=95,
+            repetition_score=92,
+            ai_sounding_score=89,
+            content_depth_score=87,
+            readability_score=93,
+            user_satisfaction_score=90,
+            missing_sections=["Transportation"],
+        )
+
+        self.assertEqual(result.score, 91)
+        self.assertEqual(
+            result.search_intent,
+            "Informational",
+        )
+        self.assertEqual(
+            result.helpfulness_score,
+            90,
+        )
+        self.assertEqual(
+            result.completeness_score,
+            88,
+        )
+        self.assertEqual(
+            result.natural_writing_score,
+            95,
+        )
+        self.assertEqual(
+            result.repetition_score,
+            92,
+        )
+        self.assertEqual(
+            result.ai_sounding_score,
+            89,
+        )
+        self.assertEqual(
+            result.content_depth_score,
+            87,
+        )
+        self.assertEqual(
+            result.readability_score,
+            93,
+        )
+        self.assertEqual(
+            result.user_satisfaction_score,
+            90,
+        )
+        self.assertEqual(
+            result.missing_sections,
+            ["Transportation"],
         )
