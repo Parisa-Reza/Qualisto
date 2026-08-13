@@ -116,8 +116,10 @@ def knowledge_validation_node(
 
     try:
 
+
         result = evaluator.evaluate(
-            state["website_content"]
+        user_prompt=state["user_prompt"],
+        content=state["website_content"],
         )
 
         logger.info(
