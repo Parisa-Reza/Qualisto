@@ -38,6 +38,8 @@ class ContentExtractor:
 
         plain_text = ContentExtractor._extract_plain_text(soup)
 
+        hero_images = ContentExtractor._extract_hero_images(soup)
+
         property_cards = ContentExtractor._extract_property_cards(soup)
 
         return WebsiteContent(
@@ -48,6 +50,7 @@ class ContentExtractor:
             paragraphs=paragraphs,
             links=links,
             images=images,
+            hero_images=hero_images,
             property_cards=property_cards,
             plain_text=plain_text,
             soup=soup,
@@ -174,7 +177,34 @@ class ContentExtractor:
 
         return soup.get_text(" ", strip=True)
 
-    
+    def _extract_hero_images(soup: BeautifulSoup) -> list[Image]:
+        """Extract only images belonging to the Presto hero slider."""
+
+        hero_images = []
+
+        slider = soup.select_one(".presto-slider")
+
+        if not slider:
+            return hero_images
+
+        for img in slider.select(
+            ".presto-slider-wrap .slider-items .slider-item img"
+        ):
+            src = img.get("src", "").strip()
+
+            if not src:
+                continue
+
+            hero_images.append(
+                Image(
+                    src=src,
+                    alt=img.get("alt", "").strip(),
+                )
+            )
+
+        return hero_images
+
+
     @staticmethod
     def _extract_property_cards(soup: BeautifulSoup) -> list[PropertyCard]:
         cards = []

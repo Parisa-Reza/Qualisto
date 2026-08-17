@@ -1,7 +1,13 @@
+import base64
 import logging
+import mimetypes
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
 
+import requests
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
 from evaluator.extractor.schemas import WebsiteContent
@@ -91,6 +97,42 @@ class PropertyCardValidationLLMResult(BaseModel):
     reason: str = ""
 
 
+class HeroImageValidationItem(BaseModel):
+    """Represents validation of one hero-section image.
+
+    Parameters:
+        image_index: Position of the image in the hero-image collection.
+        status: Geographic compatibility of the image.
+        detected_location: Location the image appears to represent.
+        reason: Explanation for the validation decision.
+
+    Returns:
+        Structured hero-image validation information.
+    """
+
+    image_index: int = Field( description="Zero-based index of the hero image.")
+
+    status: str = Field( description="valid, context_mismatch, or uncertain")
+
+    detected_location: str = ""
+
+    reason: str = ""
+
+
+class HeroImageValidationLLMResult(BaseModel):
+    """Represents validation results for all hero-section images.
+
+    Parameters:
+        results: Validation result for every submitted hero image.
+
+    Returns:
+        Structured hero-image validation result.
+    """
+
+    results: list[HeroImageValidationItem] = Field(
+        default_factory=list
+    )
+
 class KnowledgeValidationLLMResult(BaseModel):
     """Represents the general knowledge-validation result.
 
@@ -126,10 +168,25 @@ class KnowledgeValidationEvaluator:
         Evaluator capable of validating webpage knowledge and property cards.
     """
 
-    def __init__(self, llm, search_client, max_workers: int = 4):
+    def __init__(self, llm, search_client,  gemini_client=None,
+    gemini_model: str = "gemini-3.1-flash-lite", max_workers: int = 4):
+
         self.llm = llm
         self.search_client = search_client
+        self.gemini_client = gemini_client
+        self.gemini_model = gemini_model
         self.max_workers = max_workers
+
+        logger.info(
+            "KnowledgeValidationEvaluator initialized | "
+            "llm=%s | search_client=%s | gemini_enabled=%s | "
+            "gemini_model=%s | max_workers=%d",
+            type(llm).__name__,
+            type(search_client).__name__,
+            bool(gemini_client),
+            gemini_model,
+            max_workers,
+        )
 
     def evaluate(
         self,
@@ -169,6 +226,16 @@ class KnowledgeValidationEvaluator:
             for recommendation in general_result.recommendations
         ]
 
+        image_issues, image_recommendations, image_score = (
+            self._validate_hero_images(
+                content=content,
+                user_prompt=user_prompt,
+            )
+        )
+
+        issues.extend(image_issues)
+        recommendations.extend(image_recommendations)
+
         card_issues, card_recommendations, card_score = (
             self._validate_property_cards(
                 content,
@@ -179,19 +246,23 @@ class KnowledgeValidationEvaluator:
         issues.extend(card_issues)
         recommendations.extend(card_recommendations)
 
+        scores = [general_result.score]
+
         if getattr(content, "property_cards", []):
-            score = min(
-                general_result.score,
-                card_score,
-            )
-        else:
-            score = general_result.score
+            scores.append(card_score)
+
+        if self._has_hero_images(content):
+            scores.append(image_score)
+
+        score = min(scores)
 
         logger.info(
-            "Knowledge validation completed | base_score=%d | "
-            "card_score=%d | final_score=%d",
+            "Knowledge validation completed | "
+            "general_score=%d | card_score=%d | "
+            "image_score=%d | final_score=%d",
             general_result.score,
             card_score,
+            image_score,
             score,
         )
 
@@ -392,6 +463,9 @@ class KnowledgeValidationEvaluator:
 
         if not country and not country_code:
             return {}
+        
+        if country_code:
+            return {"country": country, "country_code": country_code}
 
         structured_llm = self.llm.with_structured_output(
             CountryResolutionLLMResult
@@ -704,6 +778,547 @@ Rules:
 
 Return only structured output.
 """
+
+    # ------------------------------------------------------------------
+    # HERO IMAGE VALIDATION
+    # ------------------------------------------------------------------
+
+    def _has_hero_images(
+        self,
+        content: WebsiteContent,
+    ) -> bool:
+        """Return whether hero-section images are available.
+
+        The extractor may expose hero images explicitly as `hero_images`.
+        When that field is unavailable, no image validation is attempted.
+
+        Parameters:
+            content: Extracted webpage content.
+
+        Returns:
+            True when at least one hero image exists.
+        """
+        return bool(
+            getattr(content, "hero_images", None)
+        )
+
+    def _validate_hero_images(
+        self,
+        content: WebsiteContent,
+        user_prompt: str,
+    ) -> tuple[
+        list[Issue],
+        list[Recommendation],
+        int,
+    ]:
+        """Validate hero images against the destination from the user prompt.
+
+        Parameters:
+            content: Extracted webpage content.
+            user_prompt: Original webpage-generation prompt.
+
+        Returns:
+            Issues, recommendations, and hero-image score.
+        """
+        hero_images = getattr(
+            content,
+            "hero_images",
+            [],
+        )
+
+        if not hero_images:
+            logger.info(
+                "Hero image validation skipped | no hero images."
+            )
+            return [], [], 100
+
+        if not self.gemini_client:
+            logger.warning(
+                "Hero image validation skipped | "
+                "Gemini client is not configured."
+            )
+            return [], [], 100
+
+        destination = self._resolve_destination(
+            user_prompt
+        )
+
+        intended_destination = destination.get(
+            "destination",
+            "",
+        )
+
+        if not intended_destination:
+            logger.warning(
+                "Hero image validation skipped | "
+                "destination could not be resolved."
+            )
+            return [], [], 100
+
+        logger.info(
+            "Hero image validation started | "
+            "destination=%s | images=%d",
+            intended_destination,
+            len(hero_images),
+        )
+
+        try:
+            result = self._validate_hero_images_with_gemini(
+                user_prompt=user_prompt,
+                destination=intended_destination,
+                hero_images=hero_images,
+            )
+        except Exception:
+            logger.exception(
+                "Hero image Gemini validation failed."
+            )
+
+            # Do not invent a geographic mismatch when the
+            # external vision service itself failed.
+            return [], [], 100
+
+        issues = []
+        recommendations = []
+
+        valid_count = 0
+        mismatch_count = 0
+        uncertain_count = 0
+
+        for item in result.results:
+            status = item.status.strip().lower()
+
+            if status == "valid":
+                valid_count += 1
+                continue
+
+            if status == "uncertain":
+                uncertain_count += 1
+
+                logger.warning(
+                    "Hero image uncertain | index=%d | "
+                    "detected_location=%s | reason=%s",
+                    item.image_index,
+                    item.detected_location,
+                    item.reason,
+                )
+
+                continue
+
+            mismatch_count += 1
+
+            image_number = item.image_index + 1
+
+            reason = item.reason.strip()
+
+            detected_location = (
+                item.detected_location.strip()
+            )
+
+            description = (
+                f"Hero image {image_number} does not match "
+                f"the destination requested by the user: "
+                f"'{intended_destination}'."
+            )
+
+            if detected_location:
+                description += (
+                    f" The image appears to represent "
+                    f"'{detected_location}'."
+                )
+
+            if reason:
+                description += f" {reason}"
+
+            issue = Issue(
+                severity="High",
+                title="Hero Image Context Mismatch",
+                description=description,
+            )
+
+            recommendation = Recommendation(
+                title="Review Hero Image",
+                description=(
+                    f"Replace hero image {image_number} with an "
+                    f"image that represents '{intended_destination}'."
+                ),
+            )
+
+            issues.append(issue)
+            recommendations.append(
+                recommendation
+            )
+
+        total_images = len(hero_images)
+
+        # Only confirmed mismatches reduce the score.
+        # Uncertain images are reported but do not become
+        # false mismatches.
+        image_score = round(
+            (
+                (total_images - mismatch_count)
+                / total_images
+            )
+            * 100
+        )
+
+        logger.info(
+            "Hero image validation completed | "
+            "total=%d | valid=%d | mismatch=%d | "
+            "uncertain=%d | score=%d",
+            total_images,
+            valid_count,
+            mismatch_count,
+            uncertain_count,
+            image_score,
+        )
+
+        return (
+            issues,
+            recommendations,
+            image_score,
+        )
+
+    def _validate_hero_images_with_gemini(
+        self,
+        user_prompt: str,
+        destination: str,
+        hero_images,
+    ) -> HeroImageValidationLLMResult:
+        """Send hero images to Gemini for geographic validation.
+
+        Parameters:
+            user_prompt: Original user prompt.
+            destination: Destination resolved from the user prompt.
+            hero_images: Hero-section image objects.
+
+        Returns:
+            Structured Gemini validation result.
+        """
+        parts = [
+            types.Part.from_text(
+                text=self._build_hero_image_prompt(
+                    user_prompt=user_prompt,
+                    destination=destination,
+                    image_count=len(hero_images),
+                )
+            )
+        ]
+
+        valid_image_count = 0
+
+        for index, image in enumerate(hero_images):
+            image_part = self._image_to_gemini_part(
+                image
+            )
+
+            if image_part is None:
+                logger.warning(
+                    "Skipping inaccessible hero image | index=%d | src=%s",
+                    index,
+                    getattr(image, "src", ""),
+                )
+                continue
+
+            parts.append(
+                types.Part.from_text(
+                    text=f"\nIMAGE INDEX: {index}\n"
+                )
+            )
+
+            parts.append(
+                image_part
+            )
+
+            valid_image_count += 1
+
+        if valid_image_count == 0:
+            logger.warning(
+                "No hero images could be sent to Gemini."
+            )
+
+            return HeroImageValidationLLMResult(
+                results=[]
+            )
+
+        response = self.gemini_client.models.generate_content(
+            model=self.gemini_model,
+            contents=parts,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=HeroImageValidationLLMResult,
+                temperature=0,
+            ),
+        )
+
+        if not response.parsed:
+            raise ValueError(
+                "Gemini returned no structured hero-image result."
+            )
+
+        return response.parsed
+
+    @staticmethod
+    def _build_hero_image_prompt(
+        user_prompt: str,
+        destination: str,
+        image_count: int,
+    ) -> str:
+        """Build the Gemini prompt for hero-image validation.
+
+        Parameters:
+            user_prompt: Original user prompt.
+            destination: Destination resolved from the user prompt.
+            image_count: Number of hero images.
+
+        Returns:
+            Strict multimodal validation prompt.
+        """
+        return f"""
+You are a geographic image validator inside a webpage
+knowledge-validation system.
+
+Your ONLY task is to determine whether each supplied hero image
+is geographically compatible with the requested destination.
+
+USER PROMPT:
+{user_prompt}
+
+INTENDED DESTINATION:
+{destination}
+
+NUMBER OF HERO IMAGES:
+{image_count}
+
+IMPORTANT SOURCE-OF-TRUTH RULE:
+
+The USER PROMPT is the ONLY source of truth for the intended
+destination.
+
+Do NOT change the intended destination based on:
+- the image
+- image filename
+- image URL
+- image alt text
+- webpage title
+- webpage headings
+- webpage body content
+- other images
+
+The image is evidence that must be evaluated against the
+destination already determined from the user prompt.
+
+For every image return exactly one status:
+
+valid
+context_mismatch
+uncertain
+
+VALID:
+Use only when the image provides reasonable visual evidence
+that it represents the requested destination.
+
+CONTEXT_MISMATCH:
+Use when the image clearly represents a different identifiable
+destination or contains strong geographic evidence inconsistent
+with the requested destination.
+
+Examples:
+- Requested destination = Cox's Bazar
+- Image clearly depicts Bali -> context_mismatch
+- Image clearly depicts Saint Martin -> context_mismatch
+
+UNCERTAIN:
+Use when the image is geographically generic or the visual
+evidence is insufficient to establish the exact destination.
+
+Examples:
+- Generic tropical beach
+- Generic ocean
+- Generic hotel room
+- Generic sunset
+
+Do NOT guess.
+
+Do NOT identify a destination merely because the image could
+possibly have been taken there.
+
+Do NOT use country-level similarity as proof of destination.
+For example, an arbitrary Bangladesh beach is not automatically
+Cox's Bazar.
+
+Do NOT use visual similarity alone to claim a destination.
+
+Return one result for every supplied image.
+
+The image_index must be the zero-based IMAGE INDEX supplied
+before each image.
+
+Return ONLY the structured output.
+"""
+
+    @staticmethod
+    def _image_to_gemini_part(
+        image,
+    ):
+        """Convert an extracted image into a Gemini image part.
+
+        Parameters:
+            image: Extracted webpage image object containing src.
+
+        Returns:
+            Gemini image part or None when the image cannot be loaded.
+        """
+        src = str(
+            getattr(image, "src", "")
+            or ""
+        ).strip()
+
+        if not src:
+            return None
+
+        if src.startswith(
+            (
+                "data:image/",
+            )
+        ):
+            return KnowledgeValidationEvaluator._data_uri_to_part(
+                src
+            )
+
+        if src.startswith(
+            (
+                "http://",
+                "https://",
+            )
+        ):
+            return KnowledgeValidationEvaluator._remote_image_to_part(
+                src
+            )
+
+        logger.warning(
+            "Unsupported hero image source | src=%s",
+            src,
+        )
+
+        return None
+
+    @staticmethod
+    def _data_uri_to_part(
+        data_uri: str,
+    ):
+        """Convert a data URI image into a Gemini image part.
+
+        Parameters:
+            data_uri: Base64 image data URI.
+
+        Returns:
+            Gemini image part.
+        """
+        try:
+            header, encoded = data_uri.split(
+                ",",
+                1,
+            )
+
+            mime_type = header.split(
+                ";",
+                1,
+            )[0].replace(
+                "data:",
+                "",
+            )
+
+            image_bytes = base64.b64decode(
+                encoded
+            )
+
+            return types.Part.from_bytes(
+                data=image_bytes,
+                mime_type=mime_type,
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to decode hero image data URI."
+            )
+            return None
+
+    @staticmethod
+    def _remote_image_to_part(
+        url: str,
+    ):
+        """Download a remote hero image and convert it to Gemini input.
+
+        Parameters:
+            url: Public image URL.
+
+        Returns:
+            Gemini image part.
+        """
+        try:
+            response = requests.get(
+                url,
+                timeout=15,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 "
+                        "QualistoKnowledgeValidator/1.0"
+                    )
+                },
+            )
+
+            response.raise_for_status()
+
+            content_type = (
+                response.headers.get(
+                    "Content-Type",
+                    "",
+                ).split(
+                    ";",
+                    1,
+                )[0]
+                .strip()
+                .lower()
+            )
+
+            if not content_type.startswith(
+                "image/"
+            ):
+                guessed_type = (
+                    mimetypes.guess_type(
+                        urlparse(url).path
+                    )[0]
+                )
+
+                if not guessed_type or not guessed_type.startswith(
+                    "image/"
+                ):
+                    logger.warning(
+                        "URL did not return an image | url=%s | "
+                        "content_type=%s",
+                        url,
+                        content_type,
+                    )
+                    return None
+
+                content_type = guessed_type
+
+            return types.Part.from_bytes(
+                data=response.content,
+                mime_type=content_type,
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to download hero image | url=%s",
+                url,
+            )
+            return None
+
+
+
+
+
 
     # ------------------------------------------------------------------
     # PROPERTY CARD VALIDATION

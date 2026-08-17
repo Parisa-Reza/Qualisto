@@ -1,8 +1,10 @@
 import logging
 
+from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
+from google import genai
 
 from evaluator.e2e_service.evaluator import EvaluationService
 from evaluator.llm.ollama import create_ollama_model
@@ -13,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def evaluation_page(request):
+    """Render the webpage evaluation page."""
 
     return render(
         request,
@@ -22,10 +25,19 @@ def evaluation_page(request):
 
 @require_POST
 def evaluate_website(request):
+    """
+    Evaluate a webpage using the complete evaluation workflow.
 
-    logger.info(
-        "Received evaluation request."
-    )
+    The workflow uses:
+        - Ollama for text/knowledge-related LLM evaluation.
+        - Tavily for external search evidence.
+        - Gemini for multimodal hero-image validation.
+
+    Returns:
+        JsonResponse containing the evaluation report or an error.
+    """
+
+    logger.info("Received evaluation request.")
 
     prompt = request.POST.get(
         "prompt",
@@ -43,8 +55,11 @@ def evaluate_website(request):
         len(prompt),
     )
 
-    if not prompt:
+    # --------------------------------------------------------------
+    # INPUT VALIDATION
+    # --------------------------------------------------------------
 
+    if not prompt:
         logger.warning(
             "Evaluation rejected: prompt missing."
         )
@@ -58,7 +73,6 @@ def evaluate_website(request):
         )
 
     if not url:
-
         logger.warning(
             "Evaluation rejected: URL missing."
         )
@@ -72,6 +86,9 @@ def evaluate_website(request):
         )
 
     try:
+        # ----------------------------------------------------------
+        # CREATE OLLAMA LLM
+        # ----------------------------------------------------------
 
         logger.info(
             "Creating local Ollama LLM."
@@ -88,11 +105,72 @@ def evaluate_website(request):
             ),
         )
 
+        # ----------------------------------------------------------
+        # CREATE TAVILY CLIENT
+        # ----------------------------------------------------------
+
         logger.info(
             "Creating Tavily search client."
         )
 
         search_client = TavilySearchClient()
+
+        # ----------------------------------------------------------
+        # CREATE GEMINI CLIENT
+        # ----------------------------------------------------------
+        #
+        # Gemini is required by KnowledgeValidationEvaluator for
+        # hero-image geographic validation.
+        #
+        # IMPORTANT:
+        # This client MUST be passed into EvaluationService.
+        # Otherwise EvaluationService.evaluate() receives:
+        #
+        #     gemini_client=None
+        #
+        # and raises:
+        #
+        #     RuntimeError:
+        #     Gemini client is required for hero image validation.
+        # ----------------------------------------------------------
+
+        gemini_api_key = getattr(
+            settings,
+            "GEMINI_API_KEY",
+            "",
+        )
+
+        if not gemini_api_key:
+            logger.error(
+                "GEMINI_API_KEY is missing from Django settings."
+            )
+
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        "Gemini API key is not configured. "
+                        "Set GEMINI_API_KEY in Django settings."
+                    ),
+                },
+                status=500,
+            )
+
+        logger.info(
+            "Creating Gemini client for hero-image validation."
+        )
+
+        gemini_client = genai.Client(
+            api_key=gemini_api_key,
+        )
+
+        logger.info(
+            "Gemini client created successfully."
+        )
+
+        # ----------------------------------------------------------
+        # CREATE EVALUATION SERVICE
+        # ----------------------------------------------------------
 
         logger.info(
             "Creating EvaluationService."
@@ -101,7 +179,18 @@ def evaluate_website(request):
         service = EvaluationService(
             llm=llm,
             search_client=search_client,
+            gemini_client=gemini_client,
         )
+
+        logger.info(
+            "EvaluationService created | "
+            "gemini_enabled=%s",
+            bool(gemini_client),
+        )
+
+        # ----------------------------------------------------------
+        # RUN EVALUATION
+        # ----------------------------------------------------------
 
         logger.info(
             "Starting website evaluation | url=%s",
@@ -116,6 +205,10 @@ def evaluate_website(request):
         logger.info(
             "Website evaluation returned successfully."
         )
+
+        # ----------------------------------------------------------
+        # BUILD RESPONSE
+        # ----------------------------------------------------------
 
         report = result["evaluation_report"]
 
@@ -172,7 +265,6 @@ def evaluate_website(request):
         )
 
     except Exception as exc:
-
         logger.exception(
             "Website evaluation failed."
         )
