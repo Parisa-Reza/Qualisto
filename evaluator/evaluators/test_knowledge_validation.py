@@ -38,9 +38,9 @@ from evaluator.evaluators.knowledge_validation import (
 )
 
 
-# ---------------------------------------------------------------------------
+# 
 # TEST HELPERS
-# ---------------------------------------------------------------------------
+# 
 
 @pytest.fixture
 def evaluator():
@@ -245,9 +245,9 @@ def make_evaluator(
     )
 
 
-# ---------------------------------------------------------------------------
+# 
 # GENERAL KNOWLEDGE VALIDATION
-# ---------------------------------------------------------------------------
+# 
 
 
 def test_build_search_query_uses_user_prompt_and_page_title():
@@ -439,9 +439,9 @@ def test_general_knowledge_score_and_issues_are_returned():
     )
 
 
-# ---------------------------------------------------------------------------
+# 
 # DESTINATION RESOLUTION
-# ---------------------------------------------------------------------------
+# 
 
 
 def test_resolve_destination_from_user_prompt():
@@ -548,9 +548,9 @@ def test_normalize_text():
     assert result == "new york city"
 
 
-# ---------------------------------------------------------------------------
+# 
 # HERO IMAGE VALIDATION
-# ---------------------------------------------------------------------------
+# 
 
 
 def test_has_hero_images():
@@ -978,9 +978,7 @@ def test_image_to_gemini_part_rejects_unsupported_source():
     assert result is None
 
 
-# ---------------------------------------------------------------------------
 # PROPERTY CARD VALIDATION
-# ---------------------------------------------------------------------------
 
 
 def test_property_card_exact_destination_match_is_valid():
@@ -1320,9 +1318,7 @@ def test_property_card_validation_returns_100_when_no_cards():
     assert score == 100
 
 
-# ---------------------------------------------------------------------------
 # FINAL SCORE INTEGRATION
-# ---------------------------------------------------------------------------
 
 
 def test_final_score_is_minimum_of_general_card_and_image_scores():
@@ -1428,9 +1424,7 @@ def test_final_score_without_cards_or_hero_images_uses_general_score():
     assert result.score == 88
 
 
-# ---------------------------------------------------------------------------
 # ISSUE SEVERITY
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(

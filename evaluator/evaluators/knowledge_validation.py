@@ -275,9 +275,7 @@ class KnowledgeValidationEvaluator:
             uncertain_claims=general_result.uncertain_claims,
         )
 
-    # ------------------------------------------------------------------
     # GENERAL KNOWLEDGE VALIDATION
-    # ------------------------------------------------------------------
 
     def _analyze(
         self,
@@ -316,9 +314,9 @@ class KnowledgeValidationEvaluator:
 
         return result
 
-    # ------------------------------------------------------------------
+
     # DESTINATION RESOLUTION
-    # ------------------------------------------------------------------
+
 
     def _resolve_destination(
         self,
@@ -779,9 +777,9 @@ Rules:
 Return only structured output.
 """
 
-    # ------------------------------------------------------------------
+    
     # HERO IMAGE VALIDATION
-    # ------------------------------------------------------------------
+    
 
     def _has_hero_images(
         self,
@@ -873,8 +871,7 @@ Return only structured output.
                 "Hero image Gemini validation failed."
             )
 
-            # Do not invent a geographic mismatch when the
-            # external vision service itself failed.
+
             return [], [], 100
 
         issues = []
@@ -950,9 +947,7 @@ Return only structured output.
 
         total_images = len(hero_images)
 
-        # Only confirmed mismatches reduce the score.
-        # Uncertain images are reported but do not become
-        # false mismatches.
+        # Only confirmed mismatches reduce the score. Uncertain images are reported but do not become false mismatches.
         image_score = round(
             (
                 (total_images - mismatch_count)
@@ -1317,12 +1312,8 @@ Return ONLY the structured output.
 
 
 
-
-
-
-    # ------------------------------------------------------------------
     # PROPERTY CARD VALIDATION
-    # ------------------------------------------------------------------
+    
 
     def _validate_property_cards(
         self,
@@ -1518,8 +1509,7 @@ Return ONLY the structured output.
             )
         )
 
-        # Only compare country codes when both are actual
-        # ISO-style country codes.
+        # Only compare country codes when both are actual ISO-style country codes.
         if (
             intended_country_code
             and card_country_code
@@ -1872,9 +1862,7 @@ Return ONLY the structured output.
         dest_name = str(destination.get("destination", "")).strip()
         dest_country = str(destination.get("country", "")).strip()
 
-        # Deliberately exclude card.title and card.property_type:
-        # marketing copy ("For NYC", "Downtown Getaway", etc.) pollutes
-        # search results and must never be used as location evidence.
+        # Deliberately exclude card.title and card.property_type: marketing copy ("For NYC", "Downtown Getaway", etc.) pollutes search results and must never be used as location evidence.
         if not card_city or not dest_name:
             return ""
 
@@ -2004,9 +1992,8 @@ in the reason.
 """
    
 
-    # ------------------------------------------------------------------
     # ISSUE CREATION
-    # ------------------------------------------------------------------
+
 
     @staticmethod
     def _build_property_card_issue(
@@ -2064,9 +2051,9 @@ in the reason.
 
         return issue, recommendation
 
-    # ------------------------------------------------------------------
+
     # GENERAL SEARCH
-    # ------------------------------------------------------------------
+
 
     def _collect_search_evidence(
         self,
@@ -2163,9 +2150,9 @@ Snippet: {result.get("content", "")}
 
         return "\n".join(evidence)
 
-    # ------------------------------------------------------------------
+
     # GENERAL KNOWLEDGE PROMPT
-    # ------------------------------------------------------------------
+
 
     @staticmethod
     def _build_prompt(
@@ -2263,9 +2250,9 @@ Scoring:
 Return only concrete findings.
 """
 
-    # ------------------------------------------------------------------
+    
     # HELPERS
-    # ------------------------------------------------------------------
+    
 
     @staticmethod
     def _normalize_text(

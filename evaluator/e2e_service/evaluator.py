@@ -115,14 +115,10 @@ class EvaluationService:
             len(initial_state["user_prompt"]),
         )
 
-        # ----------------------------------------------------------
         # INJECTED GRAPH
-        # ----------------------------------------------------------
-        #
-        # Tests and custom integrations can inject a fake graph.
-        # In that case, external dependencies are intentionally
-        # not required.
-        # ----------------------------------------------------------
+    
+        # Tests and custom integrations can inject a fake graph. In that case, external dependencies are intentionally not required.
+        
 
         if not self._using_default_graph:
 
@@ -152,9 +148,9 @@ class EvaluationService:
 
             return result
 
-        # ----------------------------------------------------------
+    
         # REQUIRED DEPENDENCIES
-        # ----------------------------------------------------------
+        
 
         if self._llm is None:
             logger.error(
@@ -183,9 +179,9 @@ class EvaluationService:
                 "Gemini client is required for hero image validation."
             )
 
-        # ----------------------------------------------------------
+    
         # CREATE EVALUATORS
-        # ----------------------------------------------------------
+    
 
         logger.info(
             "Creating evaluator instances."
@@ -232,9 +228,9 @@ class EvaluationService:
             "All evaluator instances created."
         )
 
-        # ----------------------------------------------------------
+
         # RUN LANGGRAPH
-        # ----------------------------------------------------------
+
 
         logger.info(
             "Starting LangGraph evaluation workflow."
@@ -337,13 +333,10 @@ def evaluate_webpage(
         url,
     )
 
-    # --------------------------------------------------------------
+    
     # GEMINI CLIENT
-    # --------------------------------------------------------------
-    #
-    # This is the single place where the convenience API creates
-    # the Gemini client.
-    # --------------------------------------------------------------
+    # This is the single place where the convenience API creates the Gemini client.
+
 
     gemini_api_key = getattr(
         settings,
@@ -360,9 +353,7 @@ def evaluate_webpage(
         api_key=gemini_api_key,
     )
 
-    # --------------------------------------------------------------
     # EVALUATION SERVICE
-    # --------------------------------------------------------------
 
     service = EvaluationService(
         llm=llm,
