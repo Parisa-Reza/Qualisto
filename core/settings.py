@@ -89,7 +89,11 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_IMAGE_MODEL = os.getenv(
+    "GEMINI_IMAGE_MODEL",
+    "gemini-3.1-flash-lite",
+)
 
 LOGGING = {
     "version": 1,

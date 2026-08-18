@@ -49,5 +49,7 @@ class WebsiteContent:
     plain_text: str
 
     soup: BeautifulSoup
+
+    hero_images: list[Image] = field(default_factory=list)
     
     property_cards: list[PropertyCard] = field(default_factory=list)
