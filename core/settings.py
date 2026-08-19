@@ -2,7 +2,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
