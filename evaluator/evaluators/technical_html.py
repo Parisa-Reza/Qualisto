@@ -163,7 +163,6 @@ class TechnicalHTMLEvaluator:
         stop_attr, stop_value, stop_node = cls._nearest_stable_anchor(tag)
 
         if stop_node is None:
-            # Nothing stable anywhere up the tree - fall back to a full tag-name path from <html>. Rare, but keeps this usable.
             parts = []
             node = tag
             while node is not None and getattr(node, "name", None) not in (None, "[document]"):
@@ -228,50 +227,6 @@ class TechnicalHTMLEvaluator:
 
         return "\n".join(lines)
 
-    # @staticmethod
-    # def _describe(problem, *, location=None, selector=None, previous=None, html=None):
-    #     """
-    #     Compose a clean, Markdown-safe issue description.
-
-    #     Uses BLANK lines ("\\n\\n") between blocks, since Markdown
-    #     renderers collapse single "\\n" into a plain space - a single
-    #     newline produces no visible line break at all. Location,
-    #     Selector, and HTML are wrapped in backticks so they render as
-    #     monospace and get automatic wrapping/horizontal-scroll from the
-    #     Markdown renderer's own code styling, instead of overflowing
-    #     the card as raw unbroken text.
-    #     """
-    #     blocks = [problem]
-
-    #     if previous:
-    #         blocks.append(f"**Previous Heading:** `{previous}`")
-    #     if location:
-    #         blocks.append(f"**Location:** `{location}`")
-    #     if selector:
-    #         blocks.append(
-    #             "**Selector** (paste into DevTools Console as "
-    #             f"`document.querySelector('...')`):\n\n`{selector}`"
-    #         )
-    #     if html:
-    #         blocks.append(f"**HTML:**\n\n```html\n{html}\n```")
-
-    #     return "\n\n".join(blocks)
-
-    # @staticmethod
-    # def _recommend(action, *, location=None, selector=None):
-    #     """
-    #     Compose a clean, Markdown-safe recommendation. Same reasoning
-    #     as _describe() above - blank-line-separated blocks, backticks
-    #     around anything long/technical.
-    #     """
-    #     blocks = [action]
-
-    #     if location:
-    #         blocks.append(f"**Location:** `{location}`")
-    #     if selector:
-    #         blocks.append(f"**Selector:** `{selector}`")
-
-    #     return "\n\n".join(blocks)
 
     @classmethod
     def _accessible_name(cls, tag):
@@ -548,9 +503,7 @@ class TechnicalHTMLEvaluator:
 
     @staticmethod
     def _check_missing_href(content, issues, recommendations):
-        """
-        The single source of truth for "anchor with no working href". (Previously this same problem was reported twice - once here and again under the "html" category - double-penalizing one bug.)
-        """
+        
         for tag in content.soup.find_all("a"):
             href = (tag.get("href") or "").strip()
 
@@ -863,9 +816,7 @@ class TechnicalHTMLEvaluator:
 
     @staticmethod
     def _check_empty_accessible_name(content, issues, recommendations):
-        """
-        Flags anchors that have NO real accessible name - checking text, aria-label, a nested image's alt, and title, in that priority order (see _accessible_name). An icon-only link with a proper alt on its inner <img> is NOT flagged here; only links a screen reader would announce with no label at all are.
-        """
+ 
         for tag in content.soup.find_all("a"):
             name = TechnicalHTMLEvaluator._accessible_name(tag)
 
