@@ -140,17 +140,42 @@ class ContentExtractor:
             if tag.get_text(strip=True)
         ]
 
+    # @staticmethod
+    # def _extract_links(soup: BeautifulSoup) -> list[Link]:
+
+    #     links = []
+
+    #     for tag in soup.find_all("a", href=True):
+
+    #         links.append(
+    #             Link(
+    #                 text=tag.get_text(strip=True),
+    #                 href=tag["href"],
+    #             )
+    #         )
+
+    #     return links
+
     @staticmethod
-    def _extract_links(soup: BeautifulSoup) -> list[Link]:
+    def _extract_links(
+        soup: BeautifulSoup,
+    ) -> list[Link]:
+        """Extract every anchor from the rendered DOM."""
 
         links = []
 
-        for tag in soup.find_all("a", href=True):
+        for tag in soup.find_all("a"):
 
             links.append(
                 Link(
-                    text=tag.get_text(strip=True),
-                    href=tag["href"],
+                    text=tag.get_text(
+                        " ",
+                        strip=True,
+                    ),
+                    href=tag.get(
+                        "href",
+                        "",
+                    ).strip(),
                 )
             )
 
@@ -177,6 +202,7 @@ class ContentExtractor:
 
         return soup.get_text(" ", strip=True)
 
+    @staticmethod
     def _extract_hero_images(soup: BeautifulSoup) -> list[Image]:
         """Extract only images belonging to the Presto hero slider."""
 
