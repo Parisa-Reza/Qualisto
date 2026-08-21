@@ -122,12 +122,17 @@ class PromptAlignmentEvaluator:
     ) -> str:
 
         return f"""
-You are evaluating an AI-generated travel webpage.
+You are evaluating whether an AI-generated webpage follows a user's
+explicit website request.
 
 Your ONLY responsibility is PROMPT ALIGNMENT.
 
-Determine whether the webpage actually follows the user's requested
-website/page requirements.
+The USER PROMPT is the ONLY source of truth for what the webpage was
+supposed to be about.
+
+The webpage content is evidence. Do not use the webpage title,
+headings, or content to redefine the user's requested destination,
+topic, audience, or purpose.
 
 ================ USER REQUEST ================
 {prompt}
@@ -139,33 +144,109 @@ website/page requirements.
 {content.headings}
 
 ================ WEBPAGE CONTENT ================
-{content.plain_text[:16000]}
+{content.plain_text.strip()}
 
 ================ WHAT TO CHECK ================
+Determine whether the COMPLETE webpage follows the USER REQUEST.
 
-Check:
+You MUST inspect the entire webpage text, including content appearing
+at the very end of the webpage.
+
+Do NOT stop after reading the beginning of the webpage.
+
+Check ALL of the following:
 
 1. Destination/location alignment.
-2. Requested page topic.
-3. Requested sections or information.
-4. Required audience/purpose.
-5. Important requirements from the user's prompt.
-6. Content that is clearly unrelated to the requested destination/topic.
-7. Contradictions between the requested destination and the webpage content.
 
-For a travel website, destination mismatch is IMPORTANT.
+2. Requested page topic.
+
+3. Requested sections or information.
+
+4. Requested audience or purpose.
+
+5. Important explicit requirements in the USER REQUEST.
+
+6. Clearly unrelated sections or content.
+
+7. Contradictions between the requested destination/topic and the
+   webpage content.
+
+============================================================
+DESTINATION / LOCATION RULE
+============================================================
+
+For travel webpages, destination mismatch is a major prompt-alignment
+problem.
+
+If the USER REQUEST asks for a webpage about one destination, content
+about a different destination is off-topic unless the USER REQUEST
+explicitly asks for comparison, nearby destinations, surrounding
+areas, excursions, or another reason that makes the second destination
+relevant.
 
 Example:
 
-User requests:
-"Create a travel guide for London."
+USER REQUEST:
+"Create a travel guide for New York City."
 
-Webpage contains:
-"Best restaurants in New York."
+WEBPAGE:
+"New York City Travel Guide"
 
-That is an OFF-TOPIC issue.
+Later:
 
-================ IMPORTANT RULES ================
+"Hammamet Travel Guide"
+
+This is an OFF-TOPIC section.
+
+You MUST report it because Hammamet is a different destination from
+New York City.
+
+Do not excuse unrelated content merely because the rest of the page
+is relevant.
+
+============================================================
+IMPORTANT EVIDENCE RULE
+============================================================
+
+Only report an issue when there is actual evidence in the webpage.
+
+However, when explicit evidence exists, you MUST report it.
+
+Do not say:
+
+"The page may contain unrelated content."
+
+Instead identify the actual content.
+
+Good:
+
+"The final 'Hammamet' section discusses Hammamet, Tunisia, even
+though the user requested a New York City travel guide."
+
+Bad:
+
+"The page contains potentially unrelated destinations."
+
+============================================================
+SECTION-BY-SECTION CHECK
+============================================================
+
+Treat headings and the text following them as separate webpage
+sections.
+
+For every identifiable section, determine:
+
+- What is this section about?
+- What destination does it discuss, if any?
+- Is that destination consistent with the USER REQUEST?
+- Does the section satisfy an explicit requirement?
+- Is the section unrelated to the requested topic?
+
+Pay particular attention to sections near the END of the webpage.
+
+============================================================
+DO NOT EVALUATE
+============================================================
 
 Do NOT evaluate:
 
@@ -173,64 +254,106 @@ Do NOT evaluate:
 - HTML
 - meta tags
 - keyword density
-- image ALT
+- image ALT text
 - links
 - factual correctness
 - search ranking
 - writing quality
+- grammar
+- visual design
 
-Do NOT invent requirements that are not present in the user request.
+These belong to other evaluation modules.
 
-Do NOT create generic issues.
+============================================================
+DO NOT INVENT REQUIREMENTS
+============================================================
 
-Only report an issue when the webpage content provides evidence for it.
+Do not penalize the webpage for requirements that do not appear in
+the USER REQUEST.
 
-Every issue MUST identify WHERE the problem occurs.
+Do not create generic issues.
 
-Use wording such as:
+Do not infer that something is required merely because it would be
+useful for a travel webpage.
 
-"Under the 'Restaurants' section, the page discusses New York
-restaurants even though the requested destination is London."
+============================================================
+ISSUE REQUIREMENTS
+============================================================
 
-Do NOT write vague statements such as:
+Every issue MUST contain:
+
+1. The actual problem.
+2. The location of the problem on the webpage.
+3. Evidence from the webpage.
+4. Why it conflicts with the USER REQUEST.
+
+For example:
+
+"The final 'Hammamet' section discusses Hammamet, Tunisia, while the
+USER REQUEST is for a New York City travel guide. This section is
+therefore unrelated to the requested destination."
+
+Do NOT produce vague issues such as:
 
 "The content may confuse users."
 
+============================================================
+RECOMMENDATION REQUIREMENTS
+============================================================
+
 Every recommendation MUST explain:
 
-1. what should be changed
-2. where it should be changed
-3. what should replace/fix the problematic content
+1. What should be changed.
+2. Where it should be changed.
+3. What should replace the problematic content.
 
 Example:
 
-"Replace the New York restaurant section with restaurants located
-in London."
+"Remove the final Hammamet section and replace it with information
+about a New York City attraction, neighborhood, restaurant, or other
+content explicitly requested by the user."
 
-================ SCORING ================
+============================================================
+SCORING
+============================================================
 
 100:
-The webpage fully follows the user's request.
+The webpage fully follows the USER REQUEST.
 
 80-99:
-Mostly aligned with only minor omissions.
+Mostly aligned with only minor omissions or minor irrelevant content.
 
 60-79:
-Partially aligned; important requirements are missing.
+Partially aligned; important explicit requirements are missing or
+there is meaningful off-topic content.
 
 40-59:
-Several important requirements are missing or there is significant
-off-topic content.
+Several important explicit requirements are missing or there is
+significant off-topic content.
 
 0-39:
-The webpage substantially fails to follow the user's request.
+The webpage substantially fails to follow the USER REQUEST.
 
-The score MUST reflect actual alignment.
+The score MUST reflect the actual evidence.
 
-If there are no meaningful alignment problems, return an empty
-issues list and an empty suggestions list.
+If there are no meaningful alignment problems:
 
-Return the required structured output.
+- issues MUST be []
+- suggestions MUST be []
+
+Do not manufacture issues just to lower the score.
+
+============================================================
+FINAL CHECK
+============================================================
+
+Before returning the result, perform a final pass over the COMPLETE
+WEBPAGE TEXT.
+
+Specifically verify that you did not miss an unrelated destination
+or topic appearing near the end of the page.
+
+Return ONLY the required structured output.
 """
 
     @staticmethod

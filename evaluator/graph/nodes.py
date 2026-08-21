@@ -1,5 +1,11 @@
 import logging
 
+from bs4 import BeautifulSoup
+
+from evaluator.extractor.playwright_renderer import (
+    PlaywrightRenderer,
+)
+
 from evaluator.evaluators.evaluation_report import EvaluationReport
 from evaluator.services.evaluation_storage import save_evaluation
 from evaluator.evaluators.score_aggregator import ScoreAggregator
@@ -9,7 +15,6 @@ from evaluator.evaluators.schemas import (
     PromptAlignmentResult,
     SearchQualityResult,
 )
-
 from evaluator.extractor.fetcher import HTMLFetcher
 from evaluator.extractor.parser import HTMLParser
 from evaluator.extractor.content_extractor import ContentExtractor
@@ -28,26 +33,65 @@ def content_extraction_node(
         "NODE: content_extraction"
     )
 
-    html = HTMLFetcher.fetch(
-        state["url"]
+    # html = HTMLFetcher.fetch(
+    #     state["url"]
+    # )
+
+    # soup = HTMLParser.parse(
+    #     html
+    # )
+
+    # website_content = ContentExtractor.extract(
+    #     state["url"],
+    #     soup,
+    # )
+
+    # state["website_content"] = website_content
+
+    # logger.info(
+    #     "Content extraction completed."
+    # )
+
+    # return state
+
+    """
+    Render the submitted webpage with Playwright and then
+    extract its content using the existing BeautifulSoup
+    ContentExtractor.
+    """
+
+    url = state["url"]
+
+    logger.info(
+        "Starting content extraction | url=%s",
+        url,
     )
 
-    soup = HTMLParser.parse(
-        html
+    renderer = PlaywrightRenderer()
+
+    rendered_html = renderer.render(
+        url,
+    )
+
+    soup = BeautifulSoup(
+        rendered_html,
+        "html.parser",
     )
 
     website_content = ContentExtractor.extract(
-        state["url"],
-        soup,
+        url=url,
+        soup=soup,
     )
-
-    state["website_content"] = website_content
 
     logger.info(
-        "Content extraction completed."
+        "Content extraction completed | url=%s",
+        url,
     )
 
-    return state
+    return {
+        **state,
+        "website_content": website_content,
+    }
 
 
 def prompt_alignment_node(
@@ -116,8 +160,10 @@ def knowledge_validation_node(
 
     try:
 
+
         result = evaluator.evaluate(
-            state["website_content"]
+        user_prompt=state["user_prompt"],
+        content=state["website_content"],
         )
 
         logger.info(

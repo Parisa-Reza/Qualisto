@@ -11,8 +11,17 @@ from evaluator.extractor.schemas import (
 
 from unittest.mock import Mock, patch
 
+import requests
+
 
 class TechnicalHTMLEvaluatorTest(SimpleTestCase):
+
+    def setUp(self):
+
+        patcher = patch("evaluator.evaluators.technical_html.requests.head")
+        self.mock_head = patcher.start()
+        self.mock_head.return_value = Mock(status_code=200)
+        self.addCleanup(patcher.stop)
 
     def create_content(
         self,
@@ -44,9 +53,12 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
             ]
 
         if html is None:
+
             html = """
-            <html>
+            <html lang="en">
                 <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
                     <title>Bali Travel Guide</title>
                 </head>
                 <body>
@@ -83,13 +95,7 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
             soup=soup,
         )
 
-    @patch("evaluator.evaluators.technical_html.requests.head")
-    def test_valid_html(
-        self,
-        mock_head,
-    ):
-
-        mock_head.return_value = Mock(status_code=200)
+    def test_valid_html(self):
 
         result = TechnicalHTMLEvaluator.evaluate(
             self.create_content(),
@@ -128,8 +134,10 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
     def test_duplicate_h1(self):
 
         html = """
-        <html>
+        <html lang="en">
         <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Bali Travel Guide</title>
         </head>
         <body>
@@ -148,29 +156,79 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
             "Multiple H1 Tags",
         )
 
-    def test_empty_anchor(self):
+    def test_empty_accessible_name(self):
+        """
+        An anchor with an href but no text, aria-label, nested image
+        alt, or title has nothing for a screen reader to announce
+        besides "link" - this is flagged as "Empty Accessible Name",
+        distinct from "Missing href Attribute" (which is about the
+        href itself being absent, not the label).
+        """
+
+        html = """
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Bali Travel Guide</title>
+        </head>
+        <body>
+            <a href="/about"></a>
+        </body>
+        </html>
+        """
 
         result = TechnicalHTMLEvaluator.evaluate(
-            self.create_content(
-                links=[
-                    Link(
-                        text="",
-                        href="/about",
-                    )
-                ]
-            ),
+            self.create_content(html=html)
         )
 
-        self.assertEqual(
-            result.issues[0].title,
-            "Empty Anchor Text",
+        self.assertTrue(
+            any(
+                issue.title == "Empty Accessible Name"
+                for issue in result.issues
+            )
+        )
+
+    def test_icon_link_with_image_alt_not_flagged(self):
+        """
+        A link wrapping only an <img alt="..."> with no visible text
+        is NOT silent to a screen reader - it announces the image's
+        alt text. This should NOT trigger "Empty Accessible Name".
+        """
+
+        html = """
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Bali Travel Guide</title>
+        </head>
+        <body>
+            <a href="/booking">
+                <img src="/icon.png" alt="Booking.com">
+            </a>
+        </body>
+        </html>
+        """
+
+        result = TechnicalHTMLEvaluator.evaluate(
+            self.create_content(html=html)
+        )
+
+        self.assertFalse(
+            any(
+                issue.title == "Empty Accessible Name"
+                for issue in result.issues
+            )
         )
 
     def test_missing_image_alt(self):
 
         html = """
-        <html>
+        <html lang="en">
         <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Bali Travel Guide</title>
         </head>
         <body>
@@ -185,14 +243,16 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
 
         self.assertEqual(
             result.issues[0].title,
-            "Missing Image ALT",
+            "Missing Image ALT Attribute",
         )
 
     def test_missing_image_src(self):
 
         html = """
-        <html>
+        <html lang="en">
         <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Bali Travel Guide</title>
         </head>
         <body>
@@ -213,8 +273,10 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
     def test_invalid_heading_order(self):
 
         html = """
-        <html>
+        <html lang="en">
             <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>Bali Travel Guide</title>
             </head>
             <body>
@@ -243,8 +305,10 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
     def test_duplicate_ids(self):
 
         html = """
-        <html>
+        <html lang="en">
             <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>Bali Travel Guide</title>
             </head>
             <body>
@@ -273,8 +337,10 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
     def test_missing_href_attribute(self):
 
         html = """
-        <html>
+        <html lang="en">
             <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>Bali Travel Guide</title>
             </head>
             <body>
@@ -294,6 +360,88 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
         self.assertTrue(
             any(
                 issue.title == "Missing href Attribute"
+                for issue in result.issues
+            )
+        )
+
+    def test_missing_lang_attribute(self):
+
+        html = """
+        <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Bali Travel Guide</title>
+            </head>
+            <body>
+                <h1>Bali</h1>
+            </body>
+        </html>
+        """
+
+        result = TechnicalHTMLEvaluator.evaluate(
+            self.create_content(
+                html=html,
+            ),
+        )
+
+        self.assertTrue(
+            any(
+                issue.title == "Missing lang Attribute"
+                for issue in result.issues
+            )
+        )
+
+    def test_missing_viewport_meta(self):
+
+        html = """
+        <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>Bali Travel Guide</title>
+            </head>
+            <body>
+                <h1>Bali</h1>
+            </body>
+        </html>
+        """
+
+        result = TechnicalHTMLEvaluator.evaluate(
+            self.create_content(
+                html=html,
+            ),
+        )
+
+        self.assertTrue(
+            any(
+                issue.title == "Missing Viewport Meta Tag"
+                for issue in result.issues
+            )
+        )
+
+    def test_missing_charset(self):
+
+        html = """
+        <html lang="en">
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Bali Travel Guide</title>
+            </head>
+            <body>
+                <h1>Bali</h1>
+            </body>
+        </html>
+        """
+
+        result = TechnicalHTMLEvaluator.evaluate(
+            self.create_content(
+                html=html,
+            ),
+        )
+
+        self.assertTrue(
+            any(
+                issue.title == "Missing Charset Declaration"
                 for issue in result.issues
             )
         )
@@ -403,6 +551,38 @@ class TechnicalHTMLEvaluatorTest(SimpleTestCase):
         self.assertTrue(
             any(
                 issue.title == "Broken Image"
+                for issue in result.issues
+            )
+        )
+
+    @patch("evaluator.evaluators.technical_html.requests.head")
+    def test_inaccessible_link(
+        self,
+        mock_head,
+    ):
+        """
+        A link whose destination can't be reached at all (timeout,
+        DNS failure, connection refused) is a distinct issue from a
+        4xx/5xx response - it should surface as "Inaccessible Link".
+        """
+
+
+        mock_head.side_effect = requests.exceptions.ConnectionError("connection refused")
+
+        result = TechnicalHTMLEvaluator.evaluate(
+            self.create_content(
+                links=[
+                    Link(
+                        text="Home",
+                        href="/unreachable",
+                    )
+                ],
+            ),
+        )
+
+        self.assertTrue(
+            any(
+                issue.title == "Inaccessible Link"
                 for issue in result.issues
             )
         )
