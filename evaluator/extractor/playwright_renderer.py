@@ -65,6 +65,7 @@ class PlaywrightRenderer:
                         timeout=self.timeout,
                     )
 
+                    self._inject_computed_hero_backgrounds(page)
                     html = page.content()
 
                     logger.info(
@@ -89,3 +90,51 @@ class PlaywrightRenderer:
             raise RuntimeError(
                 f"Failed to render webpage with Playwright: {exc}"
             ) from exc
+
+    def _inject_computed_hero_backgrounds(self, page) -> None:
+        """
+        Copy computed background-image values from hero elements
+        into their inline style attributes.
+
+        This allows page.content() to preserve dynamically
+        computed hero background images for BeautifulSoup.
+        """
+
+        page.evaluate(
+            """
+            () => {
+
+                const heroElements = document.querySelectorAll(
+                    '[id*="hero" i], [class*="hero" i]'
+                );
+
+                heroElements.forEach((element) => {
+
+                    const computedStyle =
+                        window.getComputedStyle(element);
+
+                    const backgroundImage =
+                        computedStyle.backgroundImage;
+
+                    if (
+                        backgroundImage &&
+                        backgroundImage !== "none"
+                    ) {
+
+                        const currentStyle =
+                            element.getAttribute("style") || "";
+
+                        if (
+                            !currentStyle.includes(
+                                "background-image"
+                            )
+                        ) {
+
+                            element.style.backgroundImage =
+                                backgroundImage;
+                        }
+                    }
+                });
+            }
+            """
+        )
