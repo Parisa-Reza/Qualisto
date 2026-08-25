@@ -110,14 +110,19 @@ class KnowledgeValidationEvaluator:
         card_issues, card_recommendations, card_score = self._validate_property_cards(content, user_prompt)
         issues.extend(card_issues)
         recommendations.extend(card_recommendations)
+        property_type_issues, property_type_recommendations, property_type_score = (self._validate_property_type_tabs(content))
+        issues.extend(property_type_issues)
+        recommendations.extend(property_type_recommendations)
         scores = [general_result.score]
         if getattr(content, "property_cards", []):
             scores.append(card_score)
         if self._has_hero_images(content):
             scores.append(image_score)
+        if getattr(content,"property_type_tabs",[]):
+            scores.append(property_type_score)
         score = min(scores)
-        logger.info("Knowledge validation completed | general_score=%d | card_score=%d | image_score=%d | final_score=%d",
-                    general_result.score, card_score, image_score, score)
+        logger.info("Knowledge validation completed | general_score=%d | card_score=%d | image_score=%d | property_type_score=%d |final_score=%d",
+                    general_result.score, card_score, image_score,property_type_score, score)
         return KnowledgeValidationResult(score=score, issues=issues, recommendations=recommendations,
                                          verified_claims=general_result.verified_claims,
                                          unsupported_claims=general_result.unsupported_claims,
@@ -297,7 +302,7 @@ Rules:
 Return only structured output.
 """
 
-    # ---------- HERO IMAGE VALIDATION (unchanged) ----------
+    # ---------- HERO IMAGE VALIDATION ----------
     def _has_hero_images(self, content: WebsiteContent) -> bool:
         return bool(getattr(content, "hero_images", None))
 
@@ -720,6 +725,94 @@ Scoring: 100=accurate and strongly aligned; 80-99=minor issues; 60-79=noticeable
 Return findings as issue/recommendation pairs. Every finding MUST include BOTH a concrete issue AND a recommendation that directly fixes that specific issue. Never return a recommendation without a matching issue, or an issue without a matching recommendation. Do not invent hypothetical or stylistic recommendations unrelated to a concrete issue you found.
 Return only concrete findings.
 """
+
+    @staticmethod
+    def _normalize_property_type(value: str) -> str:
+        return " ".join(
+            str(value or "").strip().lower().split()
+        )
+
+
+    def _validate_property_type_tabs(
+        self,
+        content: WebsiteContent,
+    ) -> tuple[list[Issue], list[Recommendation], int]:
+
+        issues = []
+        recommendations = []
+
+        tabs = getattr(
+            content,
+            "property_type_tabs",
+            [],
+        )
+
+        if not tabs:
+            logger.info(
+                "Property-type validation skipped | no tabs found."
+            )
+            return [], [], 100
+
+        total = 0
+        valid = 0
+
+        for tab in tabs:
+
+            expected = self._normalize_property_type(
+                tab.tab_name
+            )
+
+            for actual in tab.property_types:
+
+                total += 1
+
+                actual_normalized = (
+                    self._normalize_property_type(
+                        actual
+                    )
+                )
+
+                if actual_normalized == expected:
+                    valid += 1
+                    continue
+
+                issues.append(
+                    Issue(
+                        severity="High",
+                        title="Property Type Tab Mismatch",
+                        description=(
+                            f"The '{tab.tab_name}' tab contains "
+                            f"a '{actual}' property."
+                        ),
+                    )
+                )
+
+                recommendations.append(
+                    Recommendation(
+                        title="Fix Property Type Tab",
+                        description=(
+                            f"The '{tab.tab_name}' tab should contain "
+                            f"only '{tab.tab_name}' properties."
+                        ),
+                    )
+                )
+
+        if total == 0:
+            return issues, recommendations, 100
+
+        score = round(
+            valid / total * 100
+        )
+
+        logger.info(
+            "Property-type validation completed | "
+            "total=%d | valid=%d | score=%d",
+            total,
+            valid,
+            score,
+        )
+
+        return issues, recommendations, score
 
     # ---------- HELPERS ----------
     @staticmethod
