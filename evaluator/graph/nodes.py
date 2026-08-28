@@ -18,6 +18,7 @@ from evaluator.evaluators.schemas import (
 from evaluator.extractor.fetcher import HTMLFetcher
 from evaluator.extractor.parser import HTMLParser
 from evaluator.extractor.content_extractor import ContentExtractor
+from evaluator.extractor.schemas import PropertyTypeTab
 
 from evaluator.graph.state import EvaluationState
 
@@ -69,9 +70,15 @@ def content_extraction_node(
 
     renderer = PlaywrightRenderer()
 
-    rendered_html = renderer.render(
+    # rendered_html = renderer.render(
+    #     url,
+    # )
+    
+    rendered_html, property_type_tabs = (
+    renderer.render_property_type_tabs(
         url,
     )
+)
 
     soup = BeautifulSoup(
         rendered_html,
@@ -82,6 +89,15 @@ def content_extraction_node(
         url=url,
         soup=soup,
     )
+
+    website_content.property_type_tabs = [
+    PropertyTypeTab(
+        tab_name=item["tab_name"],
+        property_types=item["property_types"],
+        card_count=item["card_count"],
+    )
+    for item in property_type_tabs
+    ]   
 
     logger.info(
         "Content extraction completed | url=%s",
