@@ -1,5 +1,6 @@
 import logging
 import re
+
 from bs4 import BeautifulSoup
 
 from .schemas import (
@@ -7,9 +8,10 @@ from .schemas import (
     Image,
     Link,
     PropertyCard,
-    WebsiteContent
-    
+    PropertyTypeTab,
+    WebsiteContent,
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +21,28 @@ class ContentExtractor:
     Extract structured information from a BeautifulSoup document.
     """
 
-    @staticmethod
-    def extract(url: str, soup: BeautifulSoup) -> WebsiteContent:
+    _PROPERTY_CARD_SELECTORS = (
+        ".pres__property-tiles.sp-property-card",
+        ".sp-property-card",
+        ".pres__property-tiles",
+        "[data-property_city]",
+    )
 
+    _BG_URL_RE = re.compile(
+        r"""url\(\s*['"]?([^'")]+)['"]?\s*\)""",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def extract(
+        url: str,
+        soup: BeautifulSoup,
+    ) -> WebsiteContent:
         title = ContentExtractor._extract_title(soup)
-        meta_description = ContentExtractor._extract_meta_description(soup)
+
+        meta_description = (
+            ContentExtractor._extract_meta_description(soup)
+        )
 
         headings = Heading(
             h1=ContentExtractor._extract_h1(soup),
@@ -34,17 +53,37 @@ class ContentExtractor:
             h6=ContentExtractor._extract_h6(soup),
         )
 
-        paragraphs = ContentExtractor._extract_paragraphs(soup)
+        paragraphs = ContentExtractor._extract_paragraphs(
+            soup
+        )
 
-        links = ContentExtractor._extract_links(soup)
+        links = ContentExtractor._extract_links(
+            soup
+        )
 
-        images = ContentExtractor._extract_images(soup)
+        images = ContentExtractor._extract_images(
+            soup
+        )
 
-        plain_text = ContentExtractor._extract_plain_text(soup)
+        plain_text = ContentExtractor._extract_plain_text(
+            soup
+        )
 
-        hero_images = ContentExtractor._extract_hero_images(soup)
+        hero_images = ContentExtractor._extract_hero_images(
+            soup
+        )
 
-        property_cards = ContentExtractor._extract_property_cards(soup)
+        property_cards = (
+            ContentExtractor._extract_property_cards(
+                soup
+            )
+        )
+
+        property_type_tabs = (
+            ContentExtractor._extract_active_property_type_tab(
+                soup
+            )
+        )
 
         return WebsiteContent(
             url=url,
@@ -56,12 +95,15 @@ class ContentExtractor:
             images=images,
             hero_images=hero_images,
             property_cards=property_cards,
+            property_type_tabs=property_type_tabs,
             plain_text=plain_text,
             soup=soup,
         )
 
     @staticmethod
-    def _extract_title(soup: BeautifulSoup) -> str:
+    def _extract_title(
+        soup: BeautifulSoup,
+    ) -> str:
 
         if soup.title and soup.title.string:
             return soup.title.string.strip()
@@ -69,18 +111,25 @@ class ContentExtractor:
         return ""
 
     @staticmethod
-    def _extract_meta_description(soup: BeautifulSoup) -> str:
+    def _extract_meta_description(
+        soup: BeautifulSoup,
+    ) -> str:
 
-        meta = soup.find("meta", attrs={"name": "description"})
+        meta = soup.find(
+            "meta",
+            attrs={"name": "description"},
+        )
 
         if meta:
-            return meta.get("content", "").strip()
+            return meta.get(
+                "content",
+                "",
+            ).strip()
 
         return ""
 
     @staticmethod
     def _extract_h1(soup: BeautifulSoup) -> list[str]:
-
         return [
             tag.get_text(strip=True)
             for tag in soup.find_all("h1")
@@ -89,46 +138,38 @@ class ContentExtractor:
 
     @staticmethod
     def _extract_h2(soup: BeautifulSoup) -> list[str]:
-
         return [
             tag.get_text(strip=True)
             for tag in soup.find_all("h2")
             if tag.get_text(strip=True)
         ]
-    
+
     @staticmethod
     def _extract_h3(soup: BeautifulSoup) -> list[str]:
-
         return [
             tag.get_text(strip=True)
             for tag in soup.find_all("h3")
             if tag.get_text(strip=True)
         ]
 
-
     @staticmethod
     def _extract_h4(soup: BeautifulSoup) -> list[str]:
-
         return [
             tag.get_text(strip=True)
             for tag in soup.find_all("h4")
             if tag.get_text(strip=True)
         ]
 
-
     @staticmethod
     def _extract_h5(soup: BeautifulSoup) -> list[str]:
-
         return [
             tag.get_text(strip=True)
             for tag in soup.find_all("h5")
             if tag.get_text(strip=True)
         ]
 
-
     @staticmethod
     def _extract_h6(soup: BeautifulSoup) -> list[str]:
-
         return [
             tag.get_text(strip=True)
             for tag in soup.find_all("h6")
@@ -137,7 +178,6 @@ class ContentExtractor:
 
     @staticmethod
     def _extract_paragraphs(soup: BeautifulSoup) -> list[str]:
-
         return [
             tag.get_text(" ", strip=True)
             for tag in soup.find_all("p")
@@ -146,163 +186,51 @@ class ContentExtractor:
 
     @staticmethod
     def _extract_links(soup: BeautifulSoup) -> list[Link]:
-
         links = []
-
         for tag in soup.find_all("a", href=True):
-
             links.append(
                 Link(
                     text=tag.get_text(strip=True),
                     href=tag["href"],
                 )
             )
-
         return links
 
     @staticmethod
     def _extract_images(soup: BeautifulSoup) -> list[Image]:
-
         images = []
-
         for tag in soup.find_all("img"):
-
             images.append(
                 Image(
                     src=tag.get("src", ""),
                     alt=tag.get("alt", ""),
                 )
             )
-
         return images
 
     @staticmethod
     def _extract_plain_text(soup: BeautifulSoup) -> str:
-
         return soup.get_text(" ", strip=True)
 
-    _BG_URL_RE = re.compile(
-        r"""background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""",
-        re.IGNORECASE,
-    )
-
-    # @staticmethod
-    # def _extract_hero_images(soup) -> list[Image]:
-    #     """Extract hero images from both image sliders and CSS backgrounds.
-
-    #     FIX: The previous version only matched the single hardcoded id
-    #     "#img-bg-hero-section". Any other hero markup (different id,
-    #     or a class-based hero section) silently produced zero hero
-    #     images with no warning. This version:
-    #       1. Still checks the Presto slider (unchanged).
-    #       2. Matches ANY element whose id or class contains "hero"
-    #          (case-insensitive), not just one literal id.
-    #       3. Checks that element's inline style AND any <style> block
-    #          whose selector (by id or class) references it.
-    #       4. Logs a warning if hero-like markup exists but no image
-    #          could be extracted, so this doesn't fail silently again.
-    #     """
-
-    #     hero_images = []
-    #     seen = set()
-
-    #     def _add(src: str, alt: str = "") -> None:
-    #         src = (src or "").strip()
-    #         if not src or src in seen:
-    #             return
-    #         seen.add(src)
-    #         hero_images.append(Image(src=src, alt=(alt or "").strip()))
-
-    #     # ----------------------------------------------------------
-    #     # 1. Presto slider hero images (unchanged).
-    #     # ----------------------------------------------------------
-    #     slider = soup.select_one(".presto-slider")
-
-    #     if slider:
-    #         for img in slider.select(
-    #             ".presto-slider-wrap .slider-items .slider-item img"
-    #         ):
-    #             _add(img.get("src", ""), img.get("alt", ""))
-
-    #     # ----------------------------------------------------------
-    #     # 2 & 3. Any hero-like element (id or class contains "hero"),
-    #     # covering both inline style="background-image:url(...)" and
-    #     # a <style> block that targets that element's id/class.
-    #     # ----------------------------------------------------------
-    #     hero_elements = soup.select('[id*="hero" i], [class*="hero" i]')
-
-    #     for element in hero_elements:
-    #         inline_style = element.get("style", "")
-    #         for src in ContentExtractor._BG_URL_RE.findall(inline_style):
-    #             _add(src)
-
-    #     if hero_elements:
-    #         style_text = " ".join(
-    #             tag.get_text(" ", strip=False) for tag in soup.find_all("style")
-    #         )
-
-    #         selectors = set()
-    #         for element in hero_elements:
-    #             el_id = element.get("id", "")
-    #             if el_id:
-    #                 selectors.add(f"#{el_id}")
-    #             for cls in element.get("class", []) or []:
-    #                 selectors.add(f".{cls}")
-
-    #         for selector in selectors:
-    #             if not selector or selector not in style_text:
-    #                 continue
-
-    #             # Only pull background-image URLs out of this selector's
-    #             # own rule block, so unrelated rules sharing the same
-    #             # <style> tag aren't picked up by accident.
-    #             block_pattern = re.compile(
-    #                 re.escape(selector) + r"\s*\{([^}]*)\}",
-    #                 re.IGNORECASE,
-    #             )
-    #             for block in block_pattern.findall(style_text):
-    #                 for src in ContentExtractor._BG_URL_RE.findall(block):
-    #                     _add(src)
-
-    #     if not hero_images and hero_elements:
-    #         logger.warning(
-    #             "Hero-like elements found but no hero image could be extracted | "
-    #             "ids=%s | classes=%s",
-    #             [el.get("id", "") for el in hero_elements if el.get("id")],
-    #             [el.get("class", "") for el in hero_elements if el.get("class")],
-    #         )
-
-    #     return hero_images
-
-    # _PROPERTY_CARD_SELECTORS = (
-    #     ".pres__property-tiles.sp-property-card",
-    #     ".sp-property-card",
-    #     ".pres__property-tiles",
-    #     "[data-property_city]",
-    # )
-
-    _BG_URL_RE = re.compile(
-        r"""url\(\s*['"]?([^'")]+)['"]?\s*\)""",
-        re.IGNORECASE,
-    )
+  
+    # HERO IMAGE EXTRACTION
 
     @staticmethod
     def _extract_hero_images(
         soup: BeautifulSoup,
     ) -> list[Image]:
         """
-        Extract hero images from the final rendered DOM.
+        Extract hero images from the rendered DOM.
 
         Supports:
-
         1. Presto image sliders.
-        2. Hero elements using inline background-image.
-        3. Hero elements whose background-image was injected by
-           Playwright from the browser's computed CSS.
-
-        The Playwright renderer should place the computed
-        background-image into the element's style attribute.
-        BeautifulSoup then extracts that URL normally.
+        2. Hero elements with inline background-image (primary path,
+           since Playwright injects the computed background-image
+           into the inline style attribute before this ever runs).
+        3. Hero elements whose background-image exists in a <style>
+           block, tolerating pseudo-elements (::before/::after),
+           compound selectors, and combinators between the
+           id/class token and the opening '{'.
         """
 
         hero_images = []
@@ -327,13 +255,9 @@ class ContentExtractor:
                 )
             )
 
-        # ----------------------------------------------------------
-        # 1. PRESTO SLIDER
-        # ----------------------------------------------------------
+        # PRESTO SLIDER
 
-        slider = soup.select_one(
-            ".presto-slider"
-        )
+        slider = soup.select_one(".presto-slider")
 
         if slider:
 
@@ -348,118 +272,85 @@ class ContentExtractor:
                     img.get("alt", ""),
                 )
 
-        # ----------------------------------------------------------
-        # 2. HERO ELEMENTS
-        # ----------------------------------------------------------
+
+        # HERO ELEMENTS
+
 
         hero_elements = soup.select(
             '[id*="hero" i], '
             '[class*="hero" i]'
         )
 
+
+        # INLINE BACKGROUND IMAGE
+
+
         for element in hero_elements:
 
-            # ------------------------------------------------------
-            # 2A. INLINE STYLE
-            # ------------------------------------------------------
+            style = element.get("style", "")
 
-            style = element.get(
-                "style",
-                "",
-            )
-
-            for src in ContentExtractor._BG_URL_RE.findall(
-                style
-            ):
-
+            for src in ContentExtractor._BG_URL_RE.findall(style):
                 add_image(src)
 
-        # ----------------------------------------------------------
-        # 3. FALLBACK: <STYLE> BLOCKS
-        # ----------------------------------------------------------
+
+        # <STYLE> BLOCK BACKGROUND IMAGE
+
 
         style_text = " ".join(
-            tag.get_text(
-                " ",
-                strip=False,
-            )
+            tag.get_text(" ", strip=False)
             for tag in soup.find_all("style")
         )
 
         for element in hero_elements:
 
-            element_id = element.get(
-                "id",
-                "",
-            )
+            element_id = element.get("id", "")
 
             if element_id:
 
-                selector = (
-                    f"#{element_id}"
-                )
+                selector = f"#{element_id}"
 
                 pattern = re.compile(
-                    re.escape(selector)
-                    + r"\s*\{([^}]*)\}",
+                    re.escape(selector) + r"[^{}]*\{([^}]*)\}",
                     re.IGNORECASE,
                 )
 
-                for block in pattern.findall(
-                    style_text
-                ):
+                for block in pattern.findall(style_text):
 
                     for src in ContentExtractor._BG_URL_RE.findall(
                         block
                     ):
-
                         add_image(src)
 
             for class_name in (
-                element.get("class", [])
-                or []
+                element.get("class", []) or []
             ):
 
-                selector = (
-                    f".{class_name}"
-                )
+                selector = f".{class_name}"
 
                 pattern = re.compile(
-                    re.escape(selector)
-                    + r"\s*\{([^}]*)\}",
+                    re.escape(selector) + r"[^{}]*\{([^}]*)\}",
                     re.IGNORECASE,
                 )
 
-                for block in pattern.findall(
-                    style_text
-                ):
+                for block in pattern.findall(style_text):
 
                     for src in ContentExtractor._BG_URL_RE.findall(
                         block
                     ):
-
                         add_image(src)
-
-        # ----------------------------------------------------------
-        # 4. LOGGING
-        # ----------------------------------------------------------
 
         if hero_images:
 
             logger.info(
                 "Hero images extracted | count=%d | sources=%s",
                 len(hero_images),
-                [
-                    image.src
-                    for image in hero_images
-                ],
+                [image.src for image in hero_images],
             )
 
         elif hero_elements:
 
             logger.warning(
-                "Hero elements found but no hero images extracted | "
-                "count=%d",
+                "Hero elements found but no hero images extracted | count=%d",
                 len(hero_elements),
             )
 
@@ -471,24 +362,150 @@ class ContentExtractor:
 
         return hero_images
 
-    _PROPERTY_CARD_SELECTORS = (
-        ".pres__property-tiles.sp-property-card",
-        ".sp-property-card",
-        ".pres__property-tiles",
-        "[data-property_city]",
-    )
-    @staticmethod
-    def _extract_property_cards(soup: BeautifulSoup) -> list[PropertyCard]:
-        """Extract property cards, tolerant of markup drift.
 
-        FIX: The previous version required BOTH classes
-        (".pres__property-tiles.sp-property-card") on the same tag. If
-        the real markup only has one, or the classes moved to a parent/
-        child element, the selector matched nothing and property-card
-        validation was silently skipped (always scoring 100). This
-        version tries the exact original selector first, then falls
-        back progressively, and logs a warning if it still finds
-        nothing despite property-card-like markup being present.
+    # ACTIVE TAB SCOPING (used ONLY for property-type validation)
+
+
+    @staticmethod
+    def _find_active_tab_view(soup: BeautifulSoup):
+        """
+        Locate the currently active property-type tab view.
+
+        Real markup looks like:
+            <div id="itendar"
+                 class="tab-component__views tab-component__view-0 active">
+
+        i.e. a numbered class like 'tab-component__view-0', not the
+        literal 'tab-component__view'. We match on a class *token*
+        containing 'tab-component__view' together with the exact
+        'active' token.
+        """
+
+        active_view = soup.select_one(
+            '[class*="tab-component__view"][class~="active"]'
+        )
+
+        if active_view:
+            return active_view
+
+        return soup.select_one(
+            ".tab-component__tabviews .tab-component__view.active"
+        )
+
+    @staticmethod
+    def _extract_active_property_type_tab(
+        soup: BeautifulSoup,
+    ) -> list[PropertyTypeTab]:
+        """
+        Property-TYPE validation stays scoped to the active tab
+        only. E.g. if the 'Villas' tab is active with 6 tiles, this
+        returns exactly those 6 tiles' data-type values, so
+        mismatched types (e.g. a 'Hotel' showing up under 'Villas')
+        can be flagged.
+        """
+
+        active_view = ContentExtractor._find_active_tab_view(soup)
+
+        if not active_view:
+
+            logger.info(
+                "Active property-type tab not found."
+            )
+
+            return []
+
+        tab_button = soup.select_one(
+            ".tab-component__dropdown-button"
+        )
+
+        tab_name = ""
+
+        if tab_button:
+
+            tab_name = tab_button.get_text(" ", strip=True)
+
+        if not tab_name:
+
+            active_option = soup.select_one(
+                ".tab-component__options.active "
+                ".tab-component__button"
+            )
+
+            if active_option:
+
+                tab_name = active_option.get_text(" ", strip=True)
+
+        if not tab_name:
+
+            logger.warning(
+                "Active property-type view found but active tab name "
+                "could not be determined."
+            )
+
+            return []
+
+        property_tiles_block = active_view.select_one(
+            '[data-block="property-tiles"]'
+        )
+
+        if not property_tiles_block:
+
+            logger.warning(
+                "Active property-type tab found but "
+                '[data-block="property-tiles"] was not found | '
+                "tab=%s",
+                tab_name,
+            )
+
+            return [
+                PropertyTypeTab(
+                    tab_name=tab_name,
+                    property_types=[],
+                )
+            ]
+
+        property_cards = property_tiles_block.select(
+            ".sp-property-card[data-type]"
+        )
+
+        property_types = []
+
+        for card in property_cards:
+
+            property_type = card.get("data-type", "").strip()
+
+            if property_type:
+                property_types.append(property_type)
+
+        logger.info(
+            "Active property-type tab extracted | "
+            "tab=%s | cards=%d | property_types=%s",
+            tab_name,
+            len(property_types),
+            property_types,
+        )
+
+        return [
+            PropertyTypeTab(
+                tab_name=tab_name,
+                property_types=property_types,
+                card_count=len(property_types),
+            )
+        ]
+
+    @staticmethod
+    def _extract_property_cards(
+        soup: BeautifulSoup,
+    ) -> list[PropertyCard]:
+        """
+        Extract property cards for LOCATION/destination validation.
+
+        IMPORTANT: This always scans the WHOLE page, across every
+        tab — not just the active one. Location validation must
+        cover every property tile on the page regardless of which
+        tab is currently active, unlike property-TYPE validation
+        (which is intentionally scoped to the active tab in
+        _extract_active_property_type_tab above).
         """
 
         cards = []
@@ -496,775 +513,77 @@ class ContentExtractor:
         seen_ids = set()
         used_fallback = False
 
-        # Union results across all selectors (not "stop at first match"),
-        # so a page with mixed/inconsistent card markup doesn't silently
-        # drop cards that only satisfy a looser selector.
         for selector in ContentExtractor._PROPERTY_CARD_SELECTORS:
+
             found = soup.select(selector)
-            if found and selector != ContentExtractor._PROPERTY_CARD_SELECTORS[0]:
+
+            if (
+                found
+                and selector
+                != ContentExtractor._PROPERTY_CARD_SELECTORS[0]
+            ):
                 used_fallback = True
+
             for element in found:
-                if id(element) in seen_ids:
+
+                element_id = id(element)
+
+                if element_id in seen_ids:
                     continue
-                seen_ids.add(id(element))
+
+                seen_ids.add(element_id)
+
                 matched_elements.append(element)
 
         if used_fallback:
+
             logger.warning(
-                "Some property cards matched only via fallback selector | total_matched=%d",
+                "Some property cards matched only via fallback selector | "
+                "total_matched=%d",
                 len(matched_elements),
             )
 
         for card in matched_elements:
+
             title = card.select_one(".property-title a")
-            property_type = card.select_one(".property-type")
+
+            property_type = card.get("data-type", "")
 
             cards.append(
                 PropertyCard(
-                    title=title.get_text(" ", strip=True) if title else "",
+                    title=(
+                        title.get_text(" ", strip=True)
+                        if title
+                        else ""
+                    ),
                     city=card.get("data-property_city", ""),
                     country=card.get("data-property_country", ""),
-                    country_code=card.get("data-property_country_code", ""),
+                    country_code=card.get(
+                        "data-property_country_code", ""
+                    ),
                     location=card.get("data-search_string", ""),
-                    property_type=property_type.get_text(" ", strip=True)
-                    if property_type else "",
+                    property_type=property_type,
                 )
             )
 
         if not cards:
+
             possible = soup.select(
-                '[class*="property-card" i], [class*="property-tile" i]'
+                '[class*="property-card" i], '
+                '[class*="property-tile" i]'
             )
+
             if possible:
+
                 logger.warning(
-                    "No property cards extracted but property-card-like elements exist | "
-                    "count=%d | sample_classes=%s",
+                    "No property cards extracted but property-card-like "
+                    "elements exist | count=%d",
                     len(possible),
-                    [el.get("class", "") for el in possible[:5]],
                 )
 
+        logger.info(
+            "Property cards extracted (whole-page, all tabs) | count=%d",
+            len(cards),
+        )
+
         return cards
-# import logging
-# import re
-# from bs4 import BeautifulSoup
-
-# from .schemas import (
-#     Heading,
-#     Image,
-#     Link,
-#     PropertyCard,
-#     WebsiteContent
-    
-# )
-
-# logger = logging.getLogger(__name__)
-
-
-# class ContentExtractor:
-#     """
-#     Extract structured information from a BeautifulSoup document.
-#     """
-
-#     @staticmethod
-#     def extract(url: str, soup: BeautifulSoup) -> WebsiteContent:
-
-#         title = ContentExtractor._extract_title(soup)
-#         meta_description = ContentExtractor._extract_meta_description(soup)
-
-#         headings = Heading(
-#             h1=ContentExtractor._extract_h1(soup),
-#             h2=ContentExtractor._extract_h2(soup),
-#             h3=ContentExtractor._extract_h3(soup),
-#             h4=ContentExtractor._extract_h4(soup),
-#             h5=ContentExtractor._extract_h5(soup),
-#             h6=ContentExtractor._extract_h6(soup),
-#         )
-
-#         paragraphs = ContentExtractor._extract_paragraphs(soup)
-
-#         links = ContentExtractor._extract_links(soup)
-
-#         images = ContentExtractor._extract_images(soup)
-
-#         plain_text = ContentExtractor._extract_plain_text(soup)
-
-#         hero_images = ContentExtractor._extract_hero_images(soup)
-
-#         property_cards = ContentExtractor._extract_property_cards(soup)
-
-#         return WebsiteContent(
-#             url=url,
-#             title=title,
-#             meta_description=meta_description,
-#             headings=headings,
-#             paragraphs=paragraphs,
-#             links=links,
-#             images=images,
-#             hero_images=hero_images,
-#             property_cards=property_cards,
-#             plain_text=plain_text,
-#             soup=soup,
-#         )
-
-#     @staticmethod
-#     def _extract_title(soup: BeautifulSoup) -> str:
-
-#         if soup.title and soup.title.string:
-#             return soup.title.string.strip()
-
-#         return ""
-
-#     @staticmethod
-#     def _extract_meta_description(soup: BeautifulSoup) -> str:
-
-#         meta = soup.find("meta", attrs={"name": "description"})
-
-#         if meta:
-#             return meta.get("content", "").strip()
-
-#         return ""
-
-#     @staticmethod
-#     def _extract_h1(soup: BeautifulSoup) -> list[str]:
-
-#         return [
-#             tag.get_text(strip=True)
-#             for tag in soup.find_all("h1")
-#             if tag.get_text(strip=True)
-#         ]
-
-#     @staticmethod
-#     def _extract_h2(soup: BeautifulSoup) -> list[str]:
-
-#         return [
-#             tag.get_text(strip=True)
-#             for tag in soup.find_all("h2")
-#             if tag.get_text(strip=True)
-#         ]
-    
-#     @staticmethod
-#     def _extract_h3(soup: BeautifulSoup) -> list[str]:
-
-#         return [
-#             tag.get_text(strip=True)
-#             for tag in soup.find_all("h3")
-#             if tag.get_text(strip=True)
-#         ]
-
-
-#     @staticmethod
-#     def _extract_h4(soup: BeautifulSoup) -> list[str]:
-
-#         return [
-#             tag.get_text(strip=True)
-#             for tag in soup.find_all("h4")
-#             if tag.get_text(strip=True)
-#         ]
-
-
-#     @staticmethod
-#     def _extract_h5(soup: BeautifulSoup) -> list[str]:
-
-#         return [
-#             tag.get_text(strip=True)
-#             for tag in soup.find_all("h5")
-#             if tag.get_text(strip=True)
-#         ]
-
-
-#     @staticmethod
-#     def _extract_h6(soup: BeautifulSoup) -> list[str]:
-
-#         return [
-#             tag.get_text(strip=True)
-#             for tag in soup.find_all("h6")
-#             if tag.get_text(strip=True)
-#         ]
-
-#     @staticmethod
-#     def _extract_paragraphs(soup: BeautifulSoup) -> list[str]:
-
-#         return [
-#             tag.get_text(" ", strip=True)
-#             for tag in soup.find_all("p")
-#             if tag.get_text(strip=True)
-#         ]
-
-#     @staticmethod
-#     def _extract_links(soup: BeautifulSoup) -> list[Link]:
-
-#         links = []
-
-#         for tag in soup.find_all("a", href=True):
-
-#             links.append(
-#                 Link(
-#                     text=tag.get_text(strip=True),
-#                     href=tag["href"],
-#                 )
-#             )
-
-#         return links
-
-#     @staticmethod
-#     def _extract_images(soup: BeautifulSoup) -> list[Image]:
-
-#         images = []
-
-#         for tag in soup.find_all("img"):
-
-#             images.append(
-#                 Image(
-#                     src=tag.get("src", ""),
-#                     alt=tag.get("alt", ""),
-#                 )
-#             )
-
-#         return images
-
-#     @staticmethod
-#     def _extract_plain_text(soup: BeautifulSoup) -> str:
-
-#         return soup.get_text(" ", strip=True)
-
-#     _BG_URL_RE = re.compile(
-#         r"""background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""",
-#         re.IGNORECASE,
-#     )
-
-#     @staticmethod
-#     def _extract_hero_images(soup) -> list[Image]:
-#         """Extract hero images from both image sliders and CSS backgrounds.
-
-#         FIX: The previous version only matched the single hardcoded id
-#         "#img-bg-hero-section". Any other hero markup (different id,
-#         or a class-based hero section) silently produced zero hero
-#         images with no warning. This version:
-#           1. Still checks the Presto slider (unchanged).
-#           2. Matches ANY element whose id or class contains "hero"
-#              (case-insensitive), not just one literal id.
-#           3. Checks that element's inline style AND any <style> block
-#              whose selector (by id or class) references it.
-#           4. Logs a warning if hero-like markup exists but no image
-#              could be extracted, so this doesn't fail silently again.
-#         """
-
-#         hero_images = []
-#         seen = set()
-
-#         def _add(src: str, alt: str = "") -> None:
-#             src = (src or "").strip()
-#             if not src or src in seen:
-#                 return
-#             seen.add(src)
-#             hero_images.append(Image(src=src, alt=(alt or "").strip()))
-
-#         # ----------------------------------------------------------
-#         # 1. Presto slider hero images (unchanged).
-#         # ----------------------------------------------------------
-#         slider = soup.select_one(".presto-slider")
-
-#         if slider:
-#             for img in slider.select(
-#                 ".presto-slider-wrap .slider-items .slider-item img"
-#             ):
-#                 _add(img.get("src", ""), img.get("alt", ""))
-
-#         # ----------------------------------------------------------
-#         # 2 & 3. Any hero-like element (id or class contains "hero"),
-#         # covering both inline style="background-image:url(...)" and
-#         # a <style> block that targets that element's id/class.
-#         # ----------------------------------------------------------
-#         hero_elements = soup.select('[id*="hero" i], [class*="hero" i]')
-
-#         for element in hero_elements:
-#             inline_style = element.get("style", "")
-#             for src in ContentExtractor._BG_URL_RE.findall(inline_style):
-#                 _add(src)
-
-#         if hero_elements:
-#             style_text = " ".join(
-#                 tag.get_text(" ", strip=False) for tag in soup.find_all("style")
-#             )
-
-#             selectors = set()
-#             for element in hero_elements:
-#                 el_id = element.get("id", "")
-#                 if el_id:
-#                     selectors.add(f"#{el_id}")
-#                 for cls in element.get("class", []) or []:
-#                     selectors.add(f".{cls}")
-
-#             for selector in selectors:
-#                 if not selector or selector not in style_text:
-#                     continue
-
-#                 # Only pull background-image URLs out of this selector's
-#                 # own rule block, so unrelated rules sharing the same
-#                 # <style> tag aren't picked up by accident.
-#                 block_pattern = re.compile(
-#                     re.escape(selector) + r"\s*\{([^}]*)\}",
-#                     re.IGNORECASE,
-#                 )
-#                 for block in block_pattern.findall(style_text):
-#                     for src in ContentExtractor._BG_URL_RE.findall(block):
-#                         _add(src)
-
-#         if not hero_images and hero_elements:
-#             logger.warning(
-#                 "Hero-like elements found but no hero image could be extracted | "
-#                 "ids=%s | classes=%s",
-#                 [el.get("id", "") for el in hero_elements if el.get("id")],
-#                 [el.get("class", "") for el in hero_elements if el.get("class")],
-#             )
-
-#         return hero_images
-
-#     _PROPERTY_CARD_SELECTORS = (
-#         ".pres__property-tiles.sp-property-card",
-#         ".sp-property-card",
-#         ".pres__property-tiles",
-#         "[data-property_city]",
-#     )
-
-#     @staticmethod
-#     def _extract_property_cards(soup: BeautifulSoup) -> list[PropertyCard]:
-#         """Extract property cards, tolerant of markup drift.
-
-#         FIX: The previous version required BOTH classes
-#         (".pres__property-tiles.sp-property-card") on the same tag. If
-#         the real markup only has one, or the classes moved to a parent/
-#         child element, the selector matched nothing and property-card
-#         validation was silently skipped (always scoring 100). This
-#         version tries the exact original selector first, then falls
-#         back progressively, and logs a warning if it still finds
-#         nothing despite property-card-like markup being present.
-#         """
-
-#         cards = []
-#         matched_elements = []
-#         seen_ids = set()
-#         used_fallback = False
-
-#         # Union results across all selectors (not "stop at first match"),
-#         # so a page with mixed/inconsistent card markup doesn't silently
-#         # drop cards that only satisfy a looser selector.
-#         for selector in ContentExtractor._PROPERTY_CARD_SELECTORS:
-#             found = soup.select(selector)
-#             if found and selector != ContentExtractor._PROPERTY_CARD_SELECTORS[0]:
-#                 used_fallback = True
-#             for element in found:
-#                 if id(element) in seen_ids:
-#                     continue
-#                 seen_ids.add(id(element))
-#                 matched_elements.append(element)
-
-#         if used_fallback:
-#             logger.warning(
-#                 "Some property cards matched only via fallback selector | total_matched=%d",
-#                 len(matched_elements),
-#             )
-
-#         for card in matched_elements:
-#             title = card.select_one(".property-title a")
-#             property_type = card.select_one(".property-type")
-
-#             cards.append(
-#                 PropertyCard(
-#                     title=title.get_text(" ", strip=True) if title else "",
-#                     city=card.get("data-property_city", ""),
-#                     country=card.get("data-property_country", ""),
-#                     country_code=card.get("data-property_country_code", ""),
-#                     location=card.get("data-search_string", ""),
-#                     property_type=property_type.get_text(" ", strip=True)
-#                     if property_type else "",
-#                 )
-#             )
-
-#         if not cards:
-#             possible = soup.select(
-#                 '[class*="property-card" i], [class*="property-tile" i]'
-#             )
-#             if possible:
-#                 logger.warning(
-#                     "No property cards extracted but property-card-like elements exist | "
-#                     "count=%d | sample_classes=%s",
-#                     len(possible),
-#                     [el.get("class", "") for el in possible[:5]],
-#                 )
-
-#         return cards
-
-
-# # import re
-# # from bs4 import BeautifulSoup
-
-# # from .schemas import (
-# #     Heading,
-# #     Image,
-# #     Link,
-# #     PropertyCard,
-# #     WebsiteContent
-    
-# # )
-
-
-# # class ContentExtractor:
-# #     """
-# #     Extract structured information from a BeautifulSoup document.
-# #     """
-
-# #     @staticmethod
-# #     def extract(url: str, soup: BeautifulSoup) -> WebsiteContent:
-
-# #         title = ContentExtractor._extract_title(soup)
-# #         meta_description = ContentExtractor._extract_meta_description(soup)
-
-# #         headings = Heading(
-# #             h1=ContentExtractor._extract_h1(soup),
-# #             h2=ContentExtractor._extract_h2(soup),
-# #             h3=ContentExtractor._extract_h3(soup),
-# #             h4=ContentExtractor._extract_h4(soup),
-# #             h5=ContentExtractor._extract_h5(soup),
-# #             h6=ContentExtractor._extract_h6(soup),
-# #         )
-
-# #         paragraphs = ContentExtractor._extract_paragraphs(soup)
-
-# #         links = ContentExtractor._extract_links(soup)
-
-# #         images = ContentExtractor._extract_images(soup)
-
-# #         plain_text = ContentExtractor._extract_plain_text(soup)
-
-# #         hero_images = ContentExtractor._extract_hero_images(soup)
-
-# #         property_cards = ContentExtractor._extract_property_cards(soup)
-
-# #         return WebsiteContent(
-# #             url=url,
-# #             title=title,
-# #             meta_description=meta_description,
-# #             headings=headings,
-# #             paragraphs=paragraphs,
-# #             links=links,
-# #             images=images,
-# #             hero_images=hero_images,
-# #             property_cards=property_cards,
-# #             plain_text=plain_text,
-# #             soup=soup,
-# #         )
-
-# #     @staticmethod
-# #     def _extract_title(soup: BeautifulSoup) -> str:
-
-# #         if soup.title and soup.title.string:
-# #             return soup.title.string.strip()
-
-# #         return ""
-
-# #     @staticmethod
-# #     def _extract_meta_description(soup: BeautifulSoup) -> str:
-
-# #         meta = soup.find("meta", attrs={"name": "description"})
-
-# #         if meta:
-# #             return meta.get("content", "").strip()
-
-# #         return ""
-
-# #     @staticmethod
-# #     def _extract_h1(soup: BeautifulSoup) -> list[str]:
-
-# #         return [
-# #             tag.get_text(strip=True)
-# #             for tag in soup.find_all("h1")
-# #             if tag.get_text(strip=True)
-# #         ]
-
-# #     @staticmethod
-# #     def _extract_h2(soup: BeautifulSoup) -> list[str]:
-
-# #         return [
-# #             tag.get_text(strip=True)
-# #             for tag in soup.find_all("h2")
-# #             if tag.get_text(strip=True)
-# #         ]
-    
-# #     @staticmethod
-# #     def _extract_h3(soup: BeautifulSoup) -> list[str]:
-
-# #         return [
-# #             tag.get_text(strip=True)
-# #             for tag in soup.find_all("h3")
-# #             if tag.get_text(strip=True)
-# #         ]
-
-
-# #     @staticmethod
-# #     def _extract_h4(soup: BeautifulSoup) -> list[str]:
-
-# #         return [
-# #             tag.get_text(strip=True)
-# #             for tag in soup.find_all("h4")
-# #             if tag.get_text(strip=True)
-# #         ]
-
-
-# #     @staticmethod
-# #     def _extract_h5(soup: BeautifulSoup) -> list[str]:
-
-# #         return [
-# #             tag.get_text(strip=True)
-# #             for tag in soup.find_all("h5")
-# #             if tag.get_text(strip=True)
-# #         ]
-
-
-# #     @staticmethod
-# #     def _extract_h6(soup: BeautifulSoup) -> list[str]:
-
-# #         return [
-# #             tag.get_text(strip=True)
-# #             for tag in soup.find_all("h6")
-# #             if tag.get_text(strip=True)
-# #         ]
-
-# #     @staticmethod
-# #     def _extract_paragraphs(soup: BeautifulSoup) -> list[str]:
-
-# #         return [
-# #             tag.get_text(" ", strip=True)
-# #             for tag in soup.find_all("p")
-# #             if tag.get_text(strip=True)
-# #         ]
-
-# #     @staticmethod
-# #     def _extract_links(soup: BeautifulSoup) -> list[Link]:
-
-# #         links = []
-
-# #         for tag in soup.find_all("a", href=True):
-
-# #             links.append(
-# #                 Link(
-# #                     text=tag.get_text(strip=True),
-# #                     href=tag["href"],
-# #                 )
-# #             )
-
-# #         return links
-
-# #     @staticmethod
-# #     def _extract_images(soup: BeautifulSoup) -> list[Image]:
-
-# #         images = []
-
-# #         for tag in soup.find_all("img"):
-
-# #             images.append(
-# #                 Image(
-# #                     src=tag.get("src", ""),
-# #                     alt=tag.get("alt", ""),
-# #                 )
-# #             )
-
-# #         return images
-
-# #     @staticmethod
-# #     def _extract_plain_text(soup: BeautifulSoup) -> str:
-
-# #         return soup.get_text(" ", strip=True)
-
-# #     # def _extract_hero_images(soup: BeautifulSoup) -> list[Image]:
-# #     #     """Extract only images belonging to the Presto hero slider."""
-
-# #     #     hero_images = []
-
-# #     #     slider = soup.select_one(".presto-slider")
-
-# #     #     if not slider:
-# #     #         return hero_images
-
-# #     #     for img in slider.select(
-# #     #         ".presto-slider-wrap .slider-items .slider-item img"
-# #     #     ):
-# #     #         src = img.get("src", "").strip()
-
-# #     #         if not src:
-# #     #             continue
-
-# #     #         hero_images.append(
-# #     #             Image(
-# #     #                 src=src,
-# #     #                 alt=img.get("alt", "").strip(),
-# #     #             )
-# #     #         )
-
-# #     #     return hero_images
-
-# #     # UPDATE: supports both slider images and CSS background hero images
-
-# #     @staticmethod
-# #     def _extract_hero_images(soup) -> list[Image]:
-# #         """Extract hero images from both image sliders and CSS backgrounds."""
-
-# #         hero_images = []
-
-# #         # ----------------------------------------------------------
-# #         # UPDATE:
-# #         # Existing Presto slider hero images.
-# #         # ----------------------------------------------------------
-
-# #         slider = soup.select_one(".presto-slider")
-
-# #         if slider:
-
-# #             for img in slider.select(
-# #                 ".presto-slider-wrap .slider-items .slider-item img"
-# #             ):
-# #                 src = img.get("src", "").strip()
-
-# #                 if not src:
-# #                     continue
-
-# #                 hero_images.append(
-# #                     Image(
-# #                         src=src,
-# #                         alt=img.get("alt", "").strip(),
-# #                     )
-# #                 )
-
-# #         # ----------------------------------------------------------
-# #         # UPDATE:
-# #         # CSS background-image hero section.
-# #         #
-# #         # Example:
-# #         #
-# #         # #img-bg-hero-section {
-# #         #     background-image: url(...);
-# #         # }
-# #         # ----------------------------------------------------------
-
-# #         hero_section = soup.select_one(
-# #             "#img-bg-hero-section"
-# #         )
-
-# #         if hero_section:
-
-# #             style = hero_section.get(
-# #                 "style",
-# #                 "",
-# #             )
-
-# #             background_urls = re.findall(
-# #                 r"""background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""",
-# #                 style,
-# #                 flags=re.IGNORECASE,
-# #             )
-
-# #             for src in background_urls:
-
-# #                 src = src.strip()
-
-# #                 if not src:
-# #                     continue
-
-# #                 hero_images.append(
-# #                     Image(
-# #                         src=src,
-# #                         alt="",
-# #                     )
-# #                 )
-
-# #         # ----------------------------------------------------------
-# #         # UPDATE:
-# #         # Also inspect <style> blocks because the background-image
-# #         # may be defined in CSS rather than inline style.
-# #         # ----------------------------------------------------------
-
-# #         if hero_section:
-
-# #             hero_id = hero_section.get(
-# #                 "id",
-# #                 "",
-# #             )
-
-# #             for style_tag in soup.find_all("style"):
-
-# #                 css = style_tag.get_text(
-# #                     " ",
-# #                     strip=False,
-# #                 )
-
-# #                 if (
-# #                     hero_id
-# #                     and f"#{hero_id}" in css
-# #                 ):
-
-# #                     background_urls = re.findall(
-# #                         r"""background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""",
-# #                         css,
-# #                         flags=re.IGNORECASE,
-# #                     )
-
-# #                     for src in background_urls:
-
-# #                         src = src.strip()
-
-# #                         if not src:
-# #                             continue
-
-# #                         hero_images.append(
-# #                             Image(
-# #                                 src=src,
-# #                                 alt="",
-# #                             )
-# #                         )
-
-# #         # ----------------------------------------------------------
-# #         # UPDATE:
-# #         # Remove duplicate hero image URLs.
-# #         # ----------------------------------------------------------
-
-# #         unique_images = []
-# #         seen = set()
-
-# #         for image in hero_images:
-
-# #             src = image.src.strip()
-
-# #             if not src:
-# #                 continue
-
-# #             if src in seen:
-# #                 continue
-
-# #             seen.add(src)
-
-# #             unique_images.append(image)
-
-# #         return unique_images
-
-
-# #     @staticmethod
-# #     def _extract_property_cards(soup: BeautifulSoup) -> list[PropertyCard]:
-# #         cards = []
-
-# #         for card in soup.select(".pres__property-tiles.sp-property-card"):
-# #             title = card.select_one(".property-title a")
-# #             property_type = card.select_one(".property-type")
-
-# #             cards.append(
-# #                 PropertyCard(
-# #                     title=title.get_text(" ", strip=True) if title else "",
-# #                     city=card.get("data-property_city", ""),
-# #                     country=card.get("data-property_country", ""),
-# #                     country_code=card.get("data-property_country_code", ""),
-# #                     location=card.get("data-search_string", ""),
-# #                     property_type=property_type.get_text(" ", strip=True)
-# #                     if property_type else "",
-# #                 )
-# #             )
-
-# #         return cards
