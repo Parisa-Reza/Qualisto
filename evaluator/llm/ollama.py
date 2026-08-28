@@ -11,7 +11,7 @@ def create_ollama_model():
 
     model = os.getenv(
         "OLLAMA_MODEL",
-        "qwen3:1.7b",
+        "qwen2.5:3b",
     )
 
     base_url = os.getenv(
@@ -53,7 +53,7 @@ def create_ollama_model():
             "Failed to import langchain_ollama; using fallback stub LLM."
         )
 
-        fallback_model = "llama3.2:3b" if model in {"qwen3:1.7b"} else model
+        fallback_model = "llama3.2:3b" if model in {"qwen2.5:3b"} else model
 
         class StubLLM:
             def __init__(self, model_name: str):

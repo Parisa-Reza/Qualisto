@@ -268,7 +268,7 @@ class TechnicalHTMLEvaluator:
         TechnicalHTMLEvaluator._check_basic_html_structure(content, issues, recommendations)
         TechnicalHTMLEvaluator._check_duplicate_h1(content, issues, recommendations)
         TechnicalHTMLEvaluator._check_heading_order(content, issues, recommendations)
-        TechnicalHTMLEvaluator._check_duplicate_ids(content, issues, recommendations)
+        # TechnicalHTMLEvaluator._check_duplicate_ids(content, issues, recommendations)
 
     @staticmethod
     def _check_basic_html_structure(content, issues, recommendations):
@@ -390,48 +390,48 @@ class TechnicalHTMLEvaluator:
             previous_text = text
             previous_location = location
 
-    @staticmethod
-    def _check_duplicate_ids(content, issues, recommendations):
-        tags_with_id = content.soup.find_all(id=True)
-        counts = Counter(tag.get("id", "").strip() for tag in tags_with_id)
+    # @staticmethod
+    # def _check_duplicate_ids(content, issues, recommendations):
+    #     tags_with_id = content.soup.find_all(id=True)
+    #     counts = Counter(tag.get("id", "").strip() for tag in tags_with_id)
 
-        for tag in tags_with_id:
-            html_id = tag.get("id", "").strip()
-            count = counts.get(html_id, 0)
+    #     for tag in tags_with_id:
+    #         html_id = tag.get("id", "").strip()
+    #         count = counts.get(html_id, 0)
 
-            if not html_id or count <= 1:
-                continue
+    #         if not html_id or count <= 1:
+    #             continue
 
-            location = TechnicalHTMLEvaluator._locate(tag)
-            selector = TechnicalHTMLEvaluator._css_selector(tag)
-            snippet = TechnicalHTMLEvaluator._snippet(tag)
+    #         location = TechnicalHTMLEvaluator._locate(tag)
+    #         selector = TechnicalHTMLEvaluator._css_selector(tag)
+    #         snippet = TechnicalHTMLEvaluator._snippet(tag)
 
-            issues.append(
-                Issue(
-                    severity="Medium",
-                    title="Duplicate HTML ID",
-                    description=TechnicalHTMLEvaluator._describe(
-                        f"The HTML id \"{html_id}\" appears {count} times on the page.\n"
-                        f"An id must be unique - duplicates break CSS/JS that target it by id, and "
-                        f"confuse assistive technology that relies on ids for labeling.",
-                        location=location,
-                        selector=selector,
-                        html=snippet,
-                    ),
-                )
-            )
+    #         issues.append(
+    #             Issue(
+    #                 severity="Medium",
+    #                 title="Duplicate HTML ID",
+    #                 description=TechnicalHTMLEvaluator._describe(
+    #                     f"The HTML id \"{html_id}\" appears {count} times on the page.\n"
+    #                     f"An id must be unique - duplicates break CSS/JS that target it by id, and "
+    #                     f"confuse assistive technology that relies on ids for labeling.",
+    #                     location=location,
+    #                     selector=selector,
+    #                     html=snippet,
+    #                 ),
+    #             )
+    #         )
 
-            recommendations.append(
-                Recommendation(
-                    title="Make HTML IDs Unique",
-                    description=TechnicalHTMLEvaluator._recommend(
-                        f"Rename or remove one of the duplicate id=\"{html_id}\" occurrences. "
-                        f"Each id should identify only one element on the page.",
-                        location=location,
-                        selector=selector,
-                    ),
-                )
-            )
+    #         recommendations.append(
+    #             Recommendation(
+    #                 title="Make HTML IDs Unique",
+    #                 description=TechnicalHTMLEvaluator._recommend(
+    #                     f"Rename or remove one of the duplicate id=\"{html_id}\" occurrences. "
+    #                     f"Each id should identify only one element on the page.",
+    #                     location=location,
+    #                     selector=selector,
+    #                 ),
+    #             )
+    #         )
 
 
     # METADATA
@@ -997,3 +997,4 @@ class TechnicalHTMLEvaluator:
             )
 
         return max(score, 0)
+ 

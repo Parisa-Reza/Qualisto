@@ -3,7 +3,7 @@ Tests for the KnowledgeValidationEvaluator.
 
 Coverage:
     - General knowledge validation
-    - Destination resolution
+    - Destination resolution (multi-destination)
     - Country identity resolution
     - Hero image validation using Gemini
     - Property-card deterministic validation
@@ -21,26 +21,23 @@ No real API calls are made.
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock ,Mock
+from unittest.mock import MagicMock, Mock
 
 
 import pytest
-
 from evaluator.extractor.schemas import WebsiteContent
 from evaluator.evaluators.knowledge_validation import (
-    CountryResolutionLLMResult,
-    DestinationResolutionLLMResult,
+    Destination,
+    DestinationList,
     HeroImageValidationItem,
     HeroImageValidationLLMResult,
+    KnowledgeFinding,
     KnowledgeValidationEvaluator,
     KnowledgeValidationLLMResult,
     PropertyCardValidationLLMResult,
 )
 
-
-# 
 # TEST HELPERS
-# 
 
 @pytest.fixture
 def evaluator():
@@ -88,7 +85,7 @@ def user_prompt():
 
 @pytest.fixture
 def destination():
-    """Resolved destination used by property-card validation."""
+    """A single resolved destination used by property-card validation."""
     return {
         "destination": "new york city",
         "country": "united states",
@@ -181,47 +178,28 @@ def make_general_llm_result(
     issues=None,
     recommendations=None,
 ):
-    """Create a structured general knowledge result."""
+    """
+    Create a structured general knowledge result.
+
+    `issues` and `recommendations` are paired positionally into
+    `KnowledgeFinding` objects, matching the current schema where each
+    finding carries both its issue and its recommendation together.
+    """
+
+    issues = issues or []
+    recommendations = recommendations or []
+
+    findings = [
+        KnowledgeFinding(issue=issue, recommendation=recommendation)
+        for issue, recommendation in zip(issues, recommendations)
+    ]
 
     return KnowledgeValidationLLMResult(
         score=score,
         verified_claims=verified_claims or [],
         unsupported_claims=unsupported_claims or [],
         uncertain_claims=uncertain_claims or [],
-        issues=issues or [],
-        recommendations=recommendations or [],
-    )
-
-
-def make_destination_result(
-    *,
-    destination="New York City",
-    country="United States",
-    country_code="US",
-):
-    """Create a structured destination-resolution result."""
-
-    return DestinationResolutionLLMResult(
-        destination=destination,
-        country=country,
-        country_code=country_code,
-        explanation="Destination resolved from user prompt.",
-    )
-
-
-def make_country_result(
-    *,
-    country="United States",
-    country_code="US",
-    confidence="high",
-):
-    """Create a structured country-resolution result."""
-
-    return CountryResolutionLLMResult(
-        country=country,
-        country_code=country_code,
-        confidence=confidence,
-        explanation="Country identity resolved.",
+        findings=findings,
     )
 
 
@@ -245,10 +223,7 @@ def make_evaluator(
     )
 
 
-# 
 # GENERAL KNOWLEDGE VALIDATION
-# 
-
 
 def test_build_search_query_uses_user_prompt_and_page_title():
     """
@@ -393,8 +368,8 @@ def test_analyze_returns_structured_llm_result():
 def test_general_knowledge_score_and_issues_are_returned():
     """
     The evaluator should preserve the structured general knowledge
-    score and convert textual issues/recommendations into evaluator
-    Issue/Recommendation objects.
+    score and convert each (issue, recommendation) finding into
+    evaluator Issue/Recommendation objects.
     """
 
     llm = MagicMock()
@@ -439,45 +414,30 @@ def test_general_knowledge_score_and_issues_are_returned():
     )
 
 
-# 
 # DESTINATION RESOLUTION
-# 
-
 
 def test_resolve_destination_from_user_prompt():
     """
-    Destination intent must be extracted from the USER PROMPT.
+    Destination intent must be extracted from the USER PROMPT using the
+    multi-destination schema; `_resolve_destination` returns the first
+    resolved destination.
     """
 
     llm = MagicMock()
+    structured_llm = MagicMock()
 
-    destination_llm = MagicMock()
-    country_llm = MagicMock()
-
-    destination_llm.invoke.return_value = (
-        make_destination_result(
-            destination="New York City",
-            country="United States",
-            country_code="US",
-        )
+    structured_llm.invoke.return_value = DestinationList(
+        destinations=[
+            Destination(
+                destination="New York City",
+                country="United States",
+                country_code="US",
+                explanation="Destination resolved from user prompt.",
+            )
+        ]
     )
 
-    country_llm.invoke.return_value = make_country_result()
-
-    def structured_output(schema):
-        if schema is DestinationResolutionLLMResult:
-            return destination_llm
-
-        if schema is CountryResolutionLLMResult:
-            return country_llm
-
-        raise AssertionError(
-            f"Unexpected schema: {schema}"
-        )
-
-    llm.with_structured_output.side_effect = (
-        structured_output
-    )
+    llm.with_structured_output.return_value = structured_llm
 
     evaluator = make_evaluator(
         llm=llm,
@@ -486,6 +446,10 @@ def test_resolve_destination_from_user_prompt():
 
     result = evaluator._resolve_destination(
         "Create a travel webpage about New York City."
+    )
+
+    llm.with_structured_output.assert_called_once_with(
+        DestinationList
     )
 
     assert result == {
@@ -548,9 +512,7 @@ def test_normalize_text():
     assert result == "new york city"
 
 
-# 
 # HERO IMAGE VALIDATION
-# 
 
 
 def test_has_hero_images():
@@ -629,7 +591,6 @@ def test_hero_image_validation_valid_image():
         ]
     )
 
-    # Avoid testing destination-resolution internals in this test.
     evaluator._resolve_destination = MagicMock(
         return_value={
             "destination": "new york city",
@@ -978,8 +939,6 @@ def test_image_to_gemini_part_rejects_unsupported_source():
     assert result is None
 
 
-# PROPERTY CARD VALIDATION
-
 
 def test_property_card_exact_destination_match_is_valid():
     """
@@ -987,21 +946,21 @@ def test_property_card_exact_destination_match_is_valid():
     should be deterministically valid.
     """
 
+    evaluator = make_evaluator()
+
     card = make_property_card(
         city="New York City"
     )
 
-    destination = {
+    destinations = [{
         "destination": "new york city",
         "country": "united states",
         "country_code": "US",
-    }
+    }]
 
-    decision = (
-        KnowledgeValidationEvaluator._deterministic_card_match(
-            card,
-            destination,
-        )
+    decision = evaluator._deterministic_card_match(
+        card,
+        destinations,
     )
 
     assert decision == "valid"
@@ -1016,6 +975,8 @@ def test_property_card_country_mismatch_is_context_mismatch():
         Property: Paris, France
     """
 
+    evaluator = make_evaluator()
+
     card = make_property_card(
         city="Paris",
         location="Paris, France",
@@ -1023,17 +984,15 @@ def test_property_card_country_mismatch_is_context_mismatch():
         country_code="FR",
     )
 
-    destination = {
+    destinations = [{
         "destination": "new york city",
         "country": "united states",
         "country_code": "US",
-    }
+    }]
 
-    decision = (
-        KnowledgeValidationEvaluator._deterministic_card_match(
-            card,
-            destination,
-        )
+    decision = evaluator._deterministic_card_match(
+        card,
+        destinations,
     )
 
     assert decision == "context_mismatch"
@@ -1049,22 +1008,22 @@ def test_property_card_same_location_substring_is_valid():
         location = New York City, NY, USA
     """
 
+    evaluator = make_evaluator()
+
     card = make_property_card(
         city="New York",
         location="New York City, NY, USA",
     )
 
-    destination = {
+    destinations = [{
         "destination": "new york city",
         "country": "united states",
         "country_code": "US",
-    }
+    }]
 
-    decision = (
-        KnowledgeValidationEvaluator._deterministic_card_match(
-            card,
-            destination,
-        )
+    decision = evaluator._deterministic_card_match(
+        card,
+        destinations,
     )
 
     assert decision == "valid"
@@ -1076,6 +1035,8 @@ def test_property_card_unknown_geography_is_ambiguous():
     be sent to the LLM/Tavily verification path.
     """
 
+    evaluator = make_evaluator()
+
     card = make_property_card(
         city="Flushing",
         location="Queens, New York",
@@ -1083,17 +1044,15 @@ def test_property_card_unknown_geography_is_ambiguous():
         country_code="US",
     )
 
-    destination = {
+    destinations = [{
         "destination": "new york city",
         "country": "united states",
         "country_code": "US",
-    }
+    }]
 
-    decision = (
-        KnowledgeValidationEvaluator._deterministic_card_match(
-            card,
-            destination,
-        )
+    decision = evaluator._deterministic_card_match(
+        card,
+        destinations,
     )
 
     assert decision == "ambiguous"
@@ -1116,16 +1075,16 @@ def test_build_card_search_query_excludes_property_title():
         country_code="US",
     )
 
-    destination = {
+    destinations = [{
         "destination": "new york city",
         "country": "united states",
         "country_code": "US",
-    }
+    }]
 
     query = (
         KnowledgeValidationEvaluator._build_card_search_query(
             card,
-            destination,
+            destinations,
         )
     )
 
@@ -1173,14 +1132,15 @@ def test_verify_ambiguous_card_valid_when_llm_returns_valid(
     issue, recommendation = evaluator._verify_ambiguous_card(
         content=content,
         user_prompt=user_prompt,
-        destination=destination,
+        destinations=[destination],
         index=0,
         card=card,
     )
 
     assert issue is None
     assert recommendation is None
-    
+
+
 def test_verify_ambiguous_card_creates_issue_when_llm_mismatches(
     evaluator,
     content,
@@ -1221,7 +1181,7 @@ def test_verify_ambiguous_card_creates_issue_when_llm_mismatches(
     issue, recommendation = evaluator._verify_ambiguous_card(
         content=content,
         user_prompt=user_prompt,
-        destination=destination,
+        destinations=[destination],
         index=0,
         card=card,
     )
@@ -1233,6 +1193,8 @@ def test_verify_ambiguous_card_creates_issue_when_llm_mismatches(
     assert "Jersey City" in issue.description
 
     assert recommendation.title == "Review Property Card"
+
+
 def test_property_card_validation_scores_only_valid_cards():
     """
     Two cards:
@@ -1245,12 +1207,12 @@ def test_property_card_validation_scores_only_valid_cards():
 
     evaluator = make_evaluator()
 
-    evaluator._resolve_destination = MagicMock(
-        return_value={
+    evaluator._resolve_destinations = MagicMock(
+        return_value=[{
             "destination": "new york city",
             "country": "united states",
             "country_code": "US",
-        }
+        }]
     )
 
     valid_card = make_property_card(
@@ -1319,7 +1281,6 @@ def test_property_card_validation_returns_100_when_no_cards():
 
 
 # FINAL SCORE INTEGRATION
-
 
 def test_final_score_is_minimum_of_general_card_and_image_scores():
     """

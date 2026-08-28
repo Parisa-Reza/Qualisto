@@ -10,7 +10,7 @@ class OllamaModelTest(SimpleTestCase):
     @patch.dict(
         "os.environ",
         {
-            "OLLAMA_MODEL": "qwen3:1.7b",
+            "OLLAMA_MODEL": "qwen2.5:3b",
             "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
         },
     )
@@ -22,7 +22,7 @@ class OllamaModelTest(SimpleTestCase):
 
         self.assertEqual(
             model.model,
-            "qwen3:1.7b",
+            "qwen2.5:3b",
         )
 
         self.assertEqual(

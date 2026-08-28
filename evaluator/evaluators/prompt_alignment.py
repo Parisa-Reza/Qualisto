@@ -184,24 +184,8 @@ explicitly asks for comparison, nearby destinations, surrounding
 areas, excursions, or another reason that makes the second destination
 relevant.
 
-Example:
 
-USER REQUEST:
-"Create a travel guide for New York City."
-
-WEBPAGE:
-"New York City Travel Guide"
-
-Later:
-
-"Hammamet Travel Guide"
-
-This is an OFF-TOPIC section.
-
-You MUST report it because Hammamet is a different destination from
-New York City.
-
-Do not excuse unrelated content merely because the rest of the page
+DO NOT excuse unrelated content merely because the rest of the page
 is relevant.
 
 ============================================================
@@ -218,14 +202,6 @@ Do not say:
 
 Instead identify the actual content.
 
-Good:
-
-"The final 'Hammamet' section discusses Hammamet, Tunisia, even
-though the user requested a New York City travel guide."
-
-Bad:
-
-"The page contains potentially unrelated destinations."
 
 ============================================================
 SECTION-BY-SECTION CHECK
@@ -242,7 +218,6 @@ For every identifiable section, determine:
 - Does the section satisfy an explicit requirement?
 - Is the section unrelated to the requested topic?
 
-Pay particular attention to sections near the END of the webpage.
 
 ============================================================
 DO NOT EVALUATE
@@ -287,12 +262,6 @@ Every issue MUST contain:
 3. Evidence from the webpage.
 4. Why it conflicts with the USER REQUEST.
 
-For example:
-
-"The final 'Hammamet' section discusses Hammamet, Tunisia, while the
-USER REQUEST is for a New York City travel guide. This section is
-therefore unrelated to the requested destination."
-
 Do NOT produce vague issues such as:
 
 "The content may confuse users."
@@ -307,11 +276,6 @@ Every recommendation MUST explain:
 2. Where it should be changed.
 3. What should replace the problematic content.
 
-Example:
-
-"Remove the final Hammamet section and replace it with information
-about a New York City attraction, neighborhood, restaurant, or other
-content explicitly requested by the user."
 
 ============================================================
 SCORING

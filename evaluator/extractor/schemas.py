@@ -33,6 +33,12 @@ class PropertyCard:
     property_type: str
 
 @dataclass
+class PropertyTypeTab:
+    tab_name: str
+    property_types: list[str] = field(default_factory=list)
+    card_count: int = 0
+
+@dataclass
 class WebsiteContent:
     url: str
     title: str
@@ -53,3 +59,5 @@ class WebsiteContent:
     hero_images: list[Image] = field(default_factory=list)
     
     property_cards: list[PropertyCard] = field(default_factory=list)
+
+    property_type_tabs: list[PropertyTypeTab] = field(default_factory=list)
